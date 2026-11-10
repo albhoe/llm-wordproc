@@ -1,23 +1,41 @@
-import anthropic
+# Load variables from the .env file into the environment
+import os
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field, create_model
+from typing import Optional, Literal
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.agents import create_agent
+from langchain_core.tools import Tool, tool, StructuredTool
+from langchain_core.prompts import ChatPromptTemplate
+from document import Document, Block, Run, load_document, save_document
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 
-client = anthropic.Anthropic()
+from document import document_to_text
 
-# in NotepadApp:
-BINDINGS = [
-    ...
-    Binding("ctrl+l", "ask_llm", "Ask AI"),
-]
+env=load_dotenv(dotenv_path=".env", override=True)
 
-async def _call_llm(self, selected: str) -> None:
-    response = await asyncio.to_thread(
-        client.messages.create,
-        model="claude-sonnet-5-5",
-        max_tokens=1000,
-        messages=[{
-            "role": "user",
-            "content": f"Rewrite this text more concisely:\n\n{selected}",
-        }],
-    )
-    reply = response.content[0].text
-    self.notify("LLM responded")
-    self.last_reply = reply
+if not env:
+    with open(".env",'w') as config:
+        config.write("SPREADSHEET_PATH=\"spreadsheet.json\"")
+
+gemini_key = os.getenv("GOOGLE_API_KEY")
+
+# Use your api_key normally below
+print(f"Loaded key successfully: {gemini_key[:4]}...") 
+
+
+class WordProcessorAssistant():
+    def __init__(self, model_name:str = "gemini-3.1-flash-lite", document_path:str = "draft.json"):
+        self.llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=gemini_key)
+        self.document = load_document(document_path)
+        self.manifest = self.document.manifest
+
+    def answer_question(self, question:str, context:Optional[str] = None) -> str:
+        prompt = ChatPromptTemplate.from_messages([
+            ("system","You are a writing assistant that can answer questions about a document. A user may optionally provide you with context for the question."),
+            ("user", "The document is about this: {manifest}"),
+            ("user", "For context: {context}"),
+            ("user", "Question: {question}")])
+        
+        chain = create_stuff_documents_chain(self.llm, prompt)
+        return chain.invoke({"manifest": "A general purpose document.","context": "No context yet","question": "Hi"})
