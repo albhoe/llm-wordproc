@@ -6,7 +6,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Footer, Header, Input, TextArea, Static
 
-from document import Block, Document, Run, load_document, save_document, text_to_blocks, document_to_text
+from llm_proc_doc import Block, LLMProcDocument, Run, load_document, save_document, text_to_blocks, document_to_text
 from llm_functions import WordProcessorAssistant
 
 
@@ -65,7 +65,7 @@ class NotepadApp(App):
         question = event.value.strip()
         if not question:
             return
-        answer = self.ai.answer_question(question, context="Context Blank for now")
+        answer = self.ai.answer_question(question, context="No context in this document.")
         self.query_one("#answer").update(answer)
 
 if __name__ == "__main__":

@@ -6,11 +6,10 @@ from typing import Optional, Literal
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import create_agent
 from langchain_core.tools import Tool, tool, StructuredTool
+from langchain_core.documents import Document as LCDocument
 from langchain_core.prompts import ChatPromptTemplate
-from document import Document, Block, Run, load_document, save_document
+from llm_proc_doc import LLMProcDocument, Block, Run, load_document, save_document, document_to_text, text_to_blocks
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
-
-from document import document_to_text
 
 env=load_dotenv(dotenv_path=".env", override=True)
 
@@ -38,4 +37,5 @@ class WordProcessorAssistant():
             ("user", "Question: {question}")])
         
         chain = create_stuff_documents_chain(self.llm, prompt)
-        return chain.invoke({"manifest": "A general purpose document.","context": "No context yet","question": "Hi"})
+        context = [LCDocument(page_content=context) if context else None, LCDocument(page_content=document_to_text(self.document))]
+        return chain.invoke({"context": context, "manifest": self.manifest, "question": question})

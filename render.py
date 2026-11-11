@@ -2,7 +2,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
-from document import Block, Document
+from llm_proc_doc import Block, Document
 
 console = Console()
 

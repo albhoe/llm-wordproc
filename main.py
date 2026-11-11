@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from document import Document, save_document, load_document
+from llm_proc_doc import Document, save_document, load_document
 from render import render_document
 
 FILE = Path("draft.json")
