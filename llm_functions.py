@@ -22,13 +22,14 @@ if not env:
 gemini_key = os.getenv("GOOGLE_API_KEY")
 tavily_key = os.getenv("TAVILY_API_KEY")
 
-search_counter = 0
+counters = {"search":0}
+
 @tool
 def search_tool(query: str,max_results:int) -> str:
     """Tavily web search query information. Use less max_results for simple
     factual lookups and more max_results for broad research."""
-    search_counter += 1
-    if search_counter > 5:
+    counters["search"] += 1
+    if counters["search"] > 5:
         return "Search limit reached. Answer with what you already have."
     try:
         search = TavilySearch(max_results=max_results, api_key=tavily_key)
@@ -39,20 +40,22 @@ def search_tool(query: str,max_results:int) -> str:
 
 
 class WordProcessorAssistant():
-    def __init__(self, model_name:str = "gemini-3.1-flash-lite", document_path:str = "draft.json"):
+    def __init__(self, model_name:str = "gemini-3.1-flash-lite", document_path:str = "draft.json", verbose:bool = False):
         self.agent =create_agent(model=ChatGoogleGenerativeAI(model=model_name, google_api_key=gemini_key),
                                  tools=[search_tool],
-                                 system_prompt="You are secretary. You access document and web search tool. Follow document manifest.")
+                                 system_prompt="You are secretary. You access document and tool. Document tone and style match manifest.")
         self.document = load_document(document_path)
         self.manifest = self.document.manifest
-        self.verbose = False
+        self.verbose = verbose
 
     def answer_question(self, question:str, highlight:Optional[str] = None) -> str:
-        prompt = f"Document manifest: {self.manifest}. Document content: {document_to_text(self.document)}. Highlighted text: {highlight}. Question: {question}"
+        counters["search"] = 0  # Reset search counter for each question
+        prompt = f"Document manifest: {self.manifest}. Document content: {document_to_text(self.document)}. Question: {question}"
         if highlight:
-            prompt += f" Focus on the highlighted text: {highlight}."
+            prompt += f" Focus on this highlighted text: {highlight}."
         result = self.agent.invoke({"messages":[{"role":"system","content":"You secretary. Use search_tool answer document question. If user highlight, focus highlighted text."},
                                               {"role":"user","content":prompt}]})
         if self.verbose:
-            return("\n\n".join(str(m.content) for m in result["messages"]))
+            #return str(result)
+            return("\n\n".join(str(m.type)+":\n"+str(m.content) for m in result["messages"]))
         return str(result["messages"][-1].content[-1]["text"])

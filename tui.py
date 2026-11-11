@@ -15,6 +15,7 @@ from llm_functions import WordProcessorAssistant
 parser = argparse.ArgumentParser(description="Open a document in the LLM Word Processor")
 parser.add_argument("path", type=str, help="Path to the document file to be opened.")
 parser.add_argument("-n", "--new", action="store_true", help="Create a new document instead of opening an existing one.")
+parser.add_argument("-v","--verbose",action="store_true",help="Enable verbose output for debugging purposes.")
 
 
 # ---- the app -------------------------------------------------------------
@@ -27,11 +28,12 @@ class NotepadApp(App):
         Binding("ctrl+q", "quit", "Quit"),
     ]
 
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, verbose: bool = False) -> None:
         super().__init__()
         self.path = path
         self.doc = load_document(path)
-        self.ai = WordProcessorAssistant(document_path=path)
+        self.verbose = verbose
+        self.ai = WordProcessorAssistant(document_path=path, verbose=verbose)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -72,8 +74,7 @@ class NotepadApp(App):
         question = event.value.strip()
         if not question:
             return
-        if not (highlight := self.query_one(TextArea).selected_text):
-            highlight = "The user has not highlighted any specific text."
+        highlight = self.query_one(TextArea).selected_text
         answer = self.ai.answer_question(question, highlight=highlight)
         self.query_one("#answer").update(answer)
 
@@ -91,4 +92,4 @@ if __name__ == "__main__":
     else:
         if not Path(path).exists():
             raise FileNotFoundError(f"File {path} does not exist. Use the --new flag to create a new document.")
-    NotepadApp(path).run()
+    NotepadApp(path, verbose=args.verbose).run()
