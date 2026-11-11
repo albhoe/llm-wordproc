@@ -9,7 +9,7 @@ from textual.containers import VerticalScroll
 import argparse
 from pathlib import Path
 
-from llm_proc_doc import Block, LLMProcDocument, Run, load_document, save_document, text_to_blocks, document_to_text
+from wordllm_doc import Block, WordLLMDocument, Run, load_document, save_document, text_to_blocks, document_to_text
 from llm_functions import WordProcessorAssistant
 
 parser = argparse.ArgumentParser(description="Open a document in the LLM Word Processor")
@@ -87,7 +87,7 @@ if __name__ == "__main__":
         if Path(path).exists():
             raise FileExistsError(f"File {path} already exists. Use a different path or remove the file.")
         else:
-            doc = LLMProcDocument(title="New Document", manifest="A general purpose document", blocks=[])
+            doc = WordLLMDocument(title="New Document", manifest="A general purpose document", blocks=[])
             save_document(doc, path)
     else:
         if not Path(path).exists():

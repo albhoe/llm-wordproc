@@ -11,7 +11,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langchain_tavily import TavilySearch
 
-from llm_proc_doc import LLMProcDocument, Block, Run, load_document, save_document, document_to_text, text_to_blocks
+from wordllm_doc import WordLLMDocument, Block, Run, load_document, save_document, document_to_text, text_to_blocks
 
 env=load_dotenv(dotenv_path=".env", override=True)
 

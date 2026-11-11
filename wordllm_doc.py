@@ -32,7 +32,7 @@ class Block:
 
 
 @dataclass
-class LLMProcDocument:
+class WordLLMDocument:
     title: str = "Untitled"
     manifest: str = "A document for general use." #Explains the overall "vibe" of the document for the LLM.
     blocks: list[Block] = field(default_factory=list)
@@ -58,7 +58,7 @@ class LLMProcDocument:
 SCHEMA_VERSION = 1
 
 
-def document_to_dict(doc: LLMProcDocument) -> dict:
+def document_to_dict(doc: WordLLMDocument) -> dict:
     return {
         "schema": "llm-wordproc",
         "manifest": doc.manifest,
@@ -76,7 +76,7 @@ def document_to_dict(doc: LLMProcDocument) -> dict:
     }
 
 
-def document_from_dict(data: dict) -> LLMProcDocument:
+def document_from_dict(data: dict) -> WordLLMDocument:
     if data.get("schema") != "llm-wordproc":
         raise ValueError("Not an llm-wordproc document")
     manifest = data.get("manifest", "")
@@ -93,11 +93,11 @@ def document_from_dict(data: dict) -> LLMProcDocument:
         )
         for b in data.get("blocks", [])
     ]
-    return LLMProcDocument(title=data.get("title", "Untitled"), manifest=manifest, blocks=blocks,
+    return WordLLMDocument(title=data.get("title", "Untitled"), manifest=manifest, blocks=blocks,
                     version=version)
 
 
-def save_document(doc: LLMProcDocument, path: str | Path) -> None:
+def save_document(doc: WordLLMDocument, path: str | Path) -> None:
     path = Path(path)
     tmp = path.with_suffix(path.suffix + ".tmp")
     # Write to a temp file first, then rename, so a crash can't corrupt the file.
@@ -106,7 +106,7 @@ def save_document(doc: LLMProcDocument, path: str | Path) -> None:
     tmp.replace(path)
 
 
-def load_document(path: str | Path) -> LLMProcDocument:
+def load_document(path: str | Path) -> WordLLMDocument:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     return document_from_dict(data)
 
@@ -146,7 +146,7 @@ def markup_to_runs(text: str) -> list[Run]:
     return runs
 
 
-def text_to_blocks(text: str, old_doc: LLMProcDocument) -> list[Block]:
+def text_to_blocks(text: str, old_doc: WordLLMDocument) -> list[Block]:
     """Rebuild blocks from text. Reuses old IDs by line position when possible."""
     old_ids = [b.id for b in old_doc.blocks]
     blocks = []
@@ -161,7 +161,7 @@ def text_to_blocks(text: str, old_doc: LLMProcDocument) -> list[Block]:
                             runs=markup_to_runs(line)))
     return blocks
 
-def document_to_text(doc: LLMProcDocument) -> str:
+def document_to_text(doc: WordLLMDocument) -> str:
     """One paragraph per line; headings get a leading '#'."""
     lines = []
     for b in doc.blocks:
