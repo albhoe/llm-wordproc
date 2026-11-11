@@ -1,6 +1,5 @@
 from __future__ import annotations
 import re
-
 import json
 import uuid
 from dataclasses import dataclass, field, asdict

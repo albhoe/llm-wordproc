@@ -1,6 +1,3 @@
-import re
-import sys
-
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -9,7 +6,7 @@ from textual.containers import VerticalScroll
 import argparse
 from pathlib import Path
 
-from wordllm_doc import Block, WordLLMDocument, Run, load_document, save_document, text_to_blocks, document_to_text
+from wordllm_doc import WordLLMDocument, load_document, save_document, text_to_blocks, document_to_text
 from llm_functions import WordProcessorAssistant
 
 parser = argparse.ArgumentParser(description="Open a document in the LLM Word Processor")

@@ -1,14 +1,10 @@
 # Load variables from the .env file into the environment
 import os
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, create_model
-from typing import Optional, Literal
+from typing import Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import create_agent
-from langchain_core.tools import Tool, tool, StructuredTool
-from langchain_core.documents import Document as LCDocument
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.tools import tool
 from langchain_tavily import TavilySearch
 
 from wordllm_doc import WordLLMDocument, Block, Run, load_document, save_document, document_to_text, text_to_blocks
@@ -43,7 +39,7 @@ class WordProcessorAssistant():
     def __init__(self, model_name:str = "gemini-3.1-flash-lite", document_path:str = "draft.json", verbose:bool = False):
         self.agent =create_agent(model=ChatGoogleGenerativeAI(model=model_name, google_api_key=gemini_key),
                                  tools=[search_tool],
-                                 system_prompt="You are secretary. You access document and tool. Document tone and style match manifest.")
+                                 system_prompt="You are secretary. You do user request with document. Learn document tone and style in manifest.")
         self.document = load_document(document_path)
         self.manifest = self.document.manifest
         self.verbose = verbose
