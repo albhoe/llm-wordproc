@@ -22,10 +22,14 @@ if not env:
 gemini_key = os.getenv("GOOGLE_API_KEY")
 tavily_key = os.getenv("TAVILY_API_KEY")
 
+search_counter = 0
 @tool
 def search_tool(query: str,max_results:int) -> str:
     """Tavily web search query information. Use less max_results for simple
     factual lookups and more max_results for broad research."""
+    search_counter += 1
+    if search_counter > 5:
+        return "Search limit reached. Answer with what you already have."
     try:
         search = TavilySearch(max_results=max_results, api_key=tavily_key)
         results = search.invoke(query)
