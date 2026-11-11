@@ -5,11 +5,16 @@ from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Footer, Header, Input, TextArea, Static
+from textual.containers import VerticalScroll
+import argparse
+from pathlib import Path
 
 from llm_proc_doc import Block, LLMProcDocument, Run, load_document, save_document, text_to_blocks, document_to_text
 from llm_functions import WordProcessorAssistant
 
-
+parser = argparse.ArgumentParser(description="Open a document in the LLM Word Processor")
+parser.add_argument("path", type=str, help="Path to the document file to be opened.")
+parser.add_argument("-n", "--new", action="store_true", help="Create a new document instead of opening an existing one.")
 
 
 # ---- the app -------------------------------------------------------------
@@ -33,7 +38,8 @@ class NotepadApp(App):
         yield Static(f"Manifest: {self.doc.manifest}")
         yield TextArea(document_to_text(self.doc), id="editor")
         yield Input(placeholder="Questions for AI?", id="question")
-        yield Static("AI response will appear here.", id="answer")
+        with VerticalScroll(id="answer-scroll"):
+            yield Static("AI response will appear here.", id="answer")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -57,6 +63,7 @@ class NotepadApp(App):
         text = self.query_one(TextArea).text
         self.doc.blocks = text_to_blocks(text, self.doc)
         save_document(self.doc, self.path)
+        self.ai.document = self.doc  # Update the AI assistant's document reference
         self.notify("Saved")
 
     @on(Input.Submitted, "#question")
@@ -65,8 +72,23 @@ class NotepadApp(App):
         question = event.value.strip()
         if not question:
             return
-        answer = self.ai.answer_question(question, context="No context in this document.")
+        if not (highlight := self.query_one(TextArea).selected_text):
+            highlight = "The user has not highlighted any specific text."
+        answer = self.ai.answer_question(question, highlight=highlight)
         self.query_one("#answer").update(answer)
 
+
+
 if __name__ == "__main__":
-    NotepadApp(sys.argv[1] if len(sys.argv) > 1 else "draft.json").run()
+    args = parser.parse_args()
+    path = args.path 
+    if new_flag := args.new:
+        if Path(path).exists():
+            raise FileExistsError(f"File {path} already exists. Use a different path or remove the file.")
+        else:
+            doc = LLMProcDocument(title="New Document", manifest="A general purpose document", blocks=[])
+            save_document(doc, path)
+    else:
+        if not Path(path).exists():
+            raise FileNotFoundError(f"File {path} does not exist. Use the --new flag to create a new document.")
+    NotepadApp(path).run()

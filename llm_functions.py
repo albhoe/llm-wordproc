@@ -29,13 +29,16 @@ class WordProcessorAssistant():
         self.document = load_document(document_path)
         self.manifest = self.document.manifest
 
-    def answer_question(self, question:str, context:Optional[str] = None) -> str:
+    def answer_question(self, question:str, highlight:Optional[str] = None) -> str:
         prompt = ChatPromptTemplate.from_messages([
             ("system","You are a writing assistant that can answer questions about a document. A user may optionally provide you with context for the question."),
             ("user", "The document is about this: {manifest}"),
-            ("user", "For context: {context}"),
+            ("user", "Document context:{context}"),
             ("user", "Question: {question}")])
         
         chain = create_stuff_documents_chain(self.llm, prompt)
-        context = [LCDocument(page_content=context) if context else None, LCDocument(page_content=document_to_text(self.document))]
+        if highlight:
+            context = [LCDocument(page_content=highlight)]
+        else:
+            context = [LCDocument(page_content=document_to_text(self.document))]
         return chain.invoke({"context": context, "manifest": self.manifest, "question": question})
