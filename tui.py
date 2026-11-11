@@ -4,7 +4,7 @@ import sys
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Footer, Header, Input, TextArea, Static
+from textual.widgets import Footer, Header, Input, TextArea, Static, Markdown
 from textual.containers import VerticalScroll
 import argparse
 from pathlib import Path
@@ -39,7 +39,7 @@ class NotepadApp(App):
         yield TextArea(document_to_text(self.doc), id="editor")
         yield Input(placeholder="Questions for AI?", id="question")
         with VerticalScroll(id="answer-scroll"):
-            yield Static("AI response will appear here.", id="answer")
+            yield Markdown("AI response will appear here.", id="answer")
         yield Footer()
 
     def on_mount(self) -> None:
