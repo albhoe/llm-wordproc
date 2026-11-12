@@ -34,7 +34,7 @@ class Block:
 class WordLLMDocument:
     title: str = "Untitled"
     manifest: str = "A document for general use." #Explains the overall "vibe" of the document for the LLM.
-    blocks: list[Block] = field(default_factory=list)
+    blocks: dict[str, Block] = field(default_factory=dict)
     version: int = 1                    # bump when the schema changes
 
     # ---- helpers -------------------------------------------------------
@@ -45,11 +45,11 @@ class WordLLMDocument:
                       level: int = 0) -> Block:
         block = Block(id=self.new_block_id(), kind=kind, level=level,
                       runs=[Run(text=text)])
-        self.blocks.append(block)
+        self.blocks[block.id] = block
         return block
 
     def find(self, block_id: str) -> Block | None:
-        return next((b for b in self.blocks if b.id == block_id), None)
+        return self.blocks.get(block_id)
 
 
 # ---- JSON serialization -------------------------------------------------
@@ -70,7 +70,7 @@ def document_to_dict(doc: WordLLMDocument) -> dict:
                 "level": b.level,
                 "runs": [asdict(r) for r in b.runs],
             }
-            for b in doc.blocks
+            for b in doc.blocks.values()
         ],
     }
 
@@ -83,15 +83,14 @@ def document_from_dict(data: dict) -> WordLLMDocument:
     if version > SCHEMA_VERSION:
         raise ValueError(f"Document version {version} is newer than supported")
 
-    blocks = [
-        Block(
+    blocks = dict()
+    for b in data.get("blocks", []):
+        blocks[b["id"]] = Block(
             id=b["id"],
             kind=b["kind"],
             level=b.get("level", 0),
             runs=[Run(**r) for r in b.get("runs", [])],
         )
-        for b in data.get("blocks", [])
-    ]
     return WordLLMDocument(title=data.get("title", "Untitled"), manifest=manifest, blocks=blocks,
                     version=version)
 
@@ -147,8 +146,8 @@ def markup_to_runs(text: str) -> list[Run]:
 
 def text_to_blocks(text: str, old_doc: WordLLMDocument) -> list[Block]:
     """Rebuild blocks from text. Reuses old IDs by line position when possible."""
-    old_ids = [b.id for b in old_doc.blocks]
-    blocks = []
+    old_ids = [b.id for b in old_doc.blocks.values()]
+    blocks = dict()
     for i, line in enumerate(text.split("\n")):
         kind, level = "paragraph", 0
         if line.startswith("#"):
@@ -156,14 +155,14 @@ def text_to_blocks(text: str, old_doc: WordLLMDocument) -> list[Block]:
             kind, level = "heading", hashes
             line = line[hashes:].lstrip()
         block_id = old_ids[i] if i < len(old_ids) else old_doc.new_block_id()
-        blocks.append(Block(id=block_id, kind=kind, level=level,
+        blocks[block_id]=(Block(id=block_id, kind=kind, level=level,
                             runs=markup_to_runs(line)))
     return blocks
 
 def document_to_text(doc: WordLLMDocument) -> str:
     """One paragraph per line; headings get a leading '#'."""
     lines = []
-    for b in doc.blocks:
+    for b in doc.blocks.values():
         body = runs_to_markup(b.runs)
         if b.kind == "heading":
             body = "#" * max(b.level, 1) + " " + body

@@ -12,7 +12,7 @@ from llm_functions import WordProcessorAssistant
 parser = argparse.ArgumentParser(description="Open a document in the LLM Word Processor")
 parser.add_argument("path", type=str, help="Path to the document file to be opened.")
 parser.add_argument("-n", "--new", action="store_true", help="Create a new document instead of opening an existing one.")
-parser.add_argument("-v","--verbose",action="store_true",help="Enable verbose output for debugging purposes.")
+parser.add_argument("-v","--verbose",type=int,default=0,help="Enable verbose output for debugging purposes. Outputs the internal messages sliced to the specified limit. Numbers less than 1 result in no verbose output.")
 
 
 # ---- the app -------------------------------------------------------------
@@ -28,21 +28,20 @@ class NotepadApp(App):
     def __init__(self, path: str, verbose: bool = False) -> None:
         super().__init__()
         self.path = path
-        self.doc = load_document(path)
         self.verbose = verbose
         self.ai = WordProcessorAssistant(document_path=path, verbose=verbose)
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static(f"Manifest: {self.doc.manifest}")
-        yield TextArea(document_to_text(self.doc), id="editor")
+        yield Static(f"Manifest: {self.ai.document.manifest}", id="manifest")
+        yield TextArea(document_to_text(self.ai.document), id="editor")
         yield Input(placeholder="Questions for AI?", id="question")
         with VerticalScroll(id="answer-scroll"):
             yield Markdown("AI response will appear here.", id="answer")
         yield Footer()
 
     def on_mount(self) -> None:
-        self.title = self.doc.title
+        self.title = self.ai.document.title
         self.query_one(TextArea).focus()
 
     def _wrap_selection(self, marker: str) -> None:
@@ -60,10 +59,17 @@ class NotepadApp(App):
 
     def action_save(self) -> None:
         text = self.query_one(TextArea).text
-        self.doc.blocks = text_to_blocks(text, self.doc)
-        save_document(self.doc, self.path)
-        self.ai.document = self.doc  # Update the AI assistant's document reference
+        self.ai.document.blocks = text_to_blocks(text, self.ai.document)
+        save_document(self.ai.document, self.path)
         self.notify("Saved")
+
+    def update_all(self, ai_response: str | None = None) -> None:
+        self.query_one("#manifest").update(f"Manifest: {self.ai.document.manifest}")
+        self.query_one('#editor').text = document_to_text(self.ai.document)
+        if ai_response:
+            self.query_one('#answer').update(ai_response)
+        else:
+            self.query_one('#answer').update("AI response will appear here.")
 
     @on(Input.Submitted, "#question")
     def ask_question(self, event: Input.Submitted) -> None:
@@ -73,7 +79,8 @@ class NotepadApp(App):
             return
         highlight = self.query_one(TextArea).selected_text
         answer = self.ai.answer_question(question, highlight=highlight)
-        self.query_one("#answer").update(answer)
+        self.update_all(ai_response=answer)
+
 
 
 
