@@ -64,6 +64,7 @@ class NotepadApp(App):
         self.notify("Saved")
 
     def update_all(self, ai_response: str | None = None) -> None:
+        self.title = self.ai.document.title
         self.query_one("#manifest").update(f"Manifest: {self.ai.document.manifest}")
         self.query_one('#editor').text = document_to_text(self.ai.document)
         if ai_response:
@@ -72,13 +73,16 @@ class NotepadApp(App):
             self.query_one('#answer').update("AI response will appear here.")
 
     @on(Input.Submitted, "#question")
-    def ask_question(self, event: Input.Submitted) -> None:
+    async def ask_question(self, event: Input.Submitted) -> None:
         self.query_one("#answer").update("Thinking...")
         question = event.value.strip()
         if not question:
             return
         highlight = self.query_one(TextArea).selected_text
-        answer = self.ai.answer_question(question, highlight=highlight)
+        try:
+            answer = await self.ai.answer_question(question, highlight=highlight)
+        except Exception as e:
+            answer = f"Sorry, there was an exception with your request: {e}"
         self.update_all(ai_response=answer)
 
 
@@ -91,7 +95,7 @@ if __name__ == "__main__":
         if Path(path).exists():
             raise FileExistsError(f"File {path} already exists. Use a different path or remove the file.")
         else:
-            doc = WordLLMDocument(title="New Document", manifest="A general purpose document", blocks=[])
+            doc = WordLLMDocument(title="New Document", manifest="A general purpose document", blocks=dict())
             save_document(doc, path)
     else:
         if not Path(path).exists():
