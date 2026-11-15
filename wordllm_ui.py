@@ -76,15 +76,14 @@ class NotepadApp(App):
             self.query_one('#answer').update("AI response will appear here.")
 
     @on(Input.Submitted, "#question")
-    async def ask_question(self, event: Input.Submitted) -> None:
+    def ask_question(self, event: Input.Submitted) -> None:
         self.query_one("#answer").update("Thinking...")
-        breakpoint()
         question = event.value.strip()
         if not question:
             return
         highlight = self.query_one(TextArea).selected_text
         try:
-            answer = await self.ai.answer_question(question, highlight=highlight)
+            answer = self.ai.answer_question(question, highlight=highlight)
         except Exception as e:
             answer = f"Sorry, there was an exception with your request: {e}"
         self.update_all(ai_response=answer)

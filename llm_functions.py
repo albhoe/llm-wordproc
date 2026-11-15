@@ -77,10 +77,10 @@ class WordProcessorAssistant():
         except Exception as e:
             return f"Error during summarization: {str(e)}"
 
-    def retrieve(self, query,k):
+    def retrieve(self, query:str,k:int):
         counters['retrieve']+=1
         if counters['retrieve'] < 5:
-            return Retriever.search(query,k)
+            return self.retriever.search(query,k)
         else:
             return "Retrieval budget reached. Respond with what you already have."
         
@@ -100,7 +100,7 @@ class WordProcessorAssistant():
         return f"Document title updated to: {new_title}"
     
 
-    async def answer_question(self, question:str, highlight:Optional[str] = None) -> str:
+    def answer_question(self, question:str, highlight:Optional[str] = None) -> str:
         counters["search"] = 0  # Reset search counter for each question
         counters["retrieve"]=0
         prompt = f"Document manifest: {self.manifest}. Question: {question}"
