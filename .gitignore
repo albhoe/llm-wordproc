@@ -1,3 +1,4 @@
 *.json
 .env
 *_test.py
+*.npy
