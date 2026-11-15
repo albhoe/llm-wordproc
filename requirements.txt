@@ -1,3 +1,6 @@
 textual
 langchain_classic
 langchain_tavily
+langchain_openai
+sentence-transformers
+numpy

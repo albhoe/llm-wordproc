@@ -8,11 +8,12 @@ from pathlib import Path
 
 from wordllm_doc import WordLLMDocument, load_document, save_document, text_to_blocks, document_to_text
 from llm_functions import WordProcessorAssistant
+from retriever import Retriever
 
 parser = argparse.ArgumentParser(description="Open a document in the LLM Word Processor")
 parser.add_argument("path", type=str, help="Path to the document file to be opened.")
 parser.add_argument("-n", "--new", action="store_true", help="Create a new document instead of opening an existing one.")
-parser.add_argument("-v","--verbose",action="store_true",help="Enable verbose output for debugging purposes.")
+parser.add_argument("-v","--verbose",type=int,default=0,help="Enable verbose output for debugging purposes. Outputs the internal messages sliced to the specified limit. Numbers less than 1 result in no verbose output.")
 
 
 # ---- the app -------------------------------------------------------------
@@ -28,21 +29,20 @@ class NotepadApp(App):
     def __init__(self, path: str, verbose: bool = False) -> None:
         super().__init__()
         self.path = path
-        self.doc = load_document(path)
         self.verbose = verbose
-        self.ai = WordProcessorAssistant(document_path=path, verbose=verbose)
+        self.ai = WordProcessorAssistant(document_path=path+".json", verbose=verbose)
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Static(f"Manifest: {self.doc.manifest}")
-        yield TextArea(document_to_text(self.doc), id="editor")
+        yield Static(f"Manifest: {self.ai.doc.manifest}", id="manifest")
+        yield TextArea(document_to_text(self.ai.doc), id="editor")
         yield Input(placeholder="Questions for AI?", id="question")
         with VerticalScroll(id="answer-scroll"):
             yield Markdown("AI response will appear here.", id="answer")
         yield Footer()
 
     def on_mount(self) -> None:
-        self.title = self.doc.title
+        self.title = self.ai.doc.title
         self.query_one(TextArea).focus()
 
     def _wrap_selection(self, marker: str) -> None:
@@ -60,10 +60,20 @@ class NotepadApp(App):
 
     def action_save(self) -> None:
         text = self.query_one(TextArea).text
-        self.doc.blocks = text_to_blocks(text, self.doc)
-        save_document(self.doc, self.path)
-        self.ai.document = self.doc  # Update the AI assistant's document reference
+        self.ai.doc.blocks = text_to_blocks(text, self.ai.doc)
+        self.ai.retriever.sync(self.ai.doc)
+        self.ai.retriever._save()
+        save_document(self.ai.doc, self.path)
         self.notify("Saved")
+
+    def update_all(self, ai_response: str | None = None) -> None:
+        self.title = self.ai.doc.title
+        self.query_one("#manifest").update(f"Manifest: {self.ai.doc.manifest}")
+        self.query_one('#editor').text = document_to_text(self.ai.doc)
+        if ai_response:
+            self.query_one('#answer').update(ai_response)
+        else:
+            self.query_one('#answer').update("AI response will appear here.")
 
     @on(Input.Submitted, "#question")
     def ask_question(self, event: Input.Submitted) -> None:
@@ -72,21 +82,27 @@ class NotepadApp(App):
         if not question:
             return
         highlight = self.query_one(TextArea).selected_text
-        answer = self.ai.answer_question(question, highlight=highlight)
-        self.query_one("#answer").update(answer)
+        try:
+            answer = self.ai.answer_question(question, highlight=highlight)
+        except Exception as e:
+            answer = f"Sorry, there was an exception with your request: {e}"
+        self.update_all(ai_response=answer)
+
 
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    path = args.path 
+    path = args.path
+    memory_path = Path(str(path)).with_suffix(".json")
+    index_path = Path(str(path)+"_index").with_suffix(".npy")
     if new_flag := args.new:
-        if Path(path).exists():
-            raise FileExistsError(f"File {path} already exists. Use a different path or remove the file.")
+        if Path(memory_path).exists() or Path(index_path).exists():
+            raise FileExistsError(f"File {path} already exists. Use a different path or manually remove the file.")
         else:
-            doc = WordLLMDocument(title="New Document", manifest="A general purpose document", blocks=[])
+            doc = WordLLMDocument(title="New Document", manifest="A general purpose document", blocks=dict())
             save_document(doc, path)
     else:
-        if not Path(path).exists():
-            raise FileNotFoundError(f"File {path} does not exist. Use the --new flag to create a new document.")
+        if not (memory_path.exists()):
+            raise FileNotFoundError(f"{path} is missing one or both files. Use the --new flag to create a new document.")
     NotepadApp(path, verbose=args.verbose).run()
