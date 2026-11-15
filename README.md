@@ -4,4 +4,4 @@ A basic word processor built from the ground up to enable certain LLM functions 
 To run
 run `pip install -r requirements.txt`
 store gemini and tavily api keys in environment.
-run `python wordllm_ui.py [document path]`
+run `python wordllm_ui.py [path to document]/[document name with no suffix]`
