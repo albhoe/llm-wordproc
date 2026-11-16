@@ -89,10 +89,10 @@ class NotepadApp(App):
 if __name__ == "__main__":
     args = parser.parse_args()
     path = args.path
-    memory_path = Path(str(path)).with_suffix(".json")
-    index_path = Path(str(path)+"_index").with_suffix(".npy")
+    memory_path = Path(str(path)).with_suffix("").with_suffix(".json")
+    index_path = Path(str(path)+"_index").with_suffix("").with_suffix(".npy")
     fresh = False
-    if new_flag := args.new:
+    if args.new:
         if Path(memory_path).exists() or Path(index_path).exists():
             raise FileExistsError(f"File {path} already exists. Use a different path or manually remove the file.")
         else:

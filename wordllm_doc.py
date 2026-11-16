@@ -54,8 +54,7 @@ class WordLLMDocument:
 
     def add_paragraph(self, text: str, kind: BlockKind = "paragraph",
                       level: int = 0) -> Block:
-        block = Block(id=self.new_block_id(), kind=kind, level=level,
-                      runs=[Run(text=text)])
+        block = Block(id=self.new_block_id(), kind=kind, level=level, runs=[Run(text=text)])
         self.blocks[block.id] = block
         return block
     
@@ -63,10 +62,21 @@ class WordLLMDocument:
         return self.blocks.get(block_id)
 
     def save(self,path:Path):
-        save_document(self,path)
+        path = Path(path).with_suffix("").with_suffix(".json")
+        tmp = path.with_suffix("").with_suffix(path.suffix + ".tmp")
+        # Write to a temp file first, then rename, so a crash can't corrupt the file.
+        tmp.write_text(json.dumps(document_to_dict(self), indent=2, ensure_ascii=False),
+                   encoding="utf-8")
+        tmp.replace(path)
 
     def get_text(self):
-        return document_to_text(self)
+        lines = []
+        for b in self.blocks.values():
+            body = runs_to_markup(b.runs)
+            if b.kind == "heading":
+                body = "#" * max(b.level, 1) + " " + body
+            lines.append(body)
+        return "\n".join(lines)
 
     def update_from_text(self,text:str):
         self.blocks = text_to_blocks(text,self)
@@ -118,17 +128,9 @@ def document_from_dict(data: dict) -> WordLLMDocument:
                     version=version, embedding_model=embedding_model)
 
 
-def save_document(doc: WordLLMDocument, path: str | Path) -> None:
-    path = Path(path).with_suffix(".json")
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    # Write to a temp file first, then rename, so a crash can't corrupt the file.
-    tmp.write_text(json.dumps(document_to_dict(doc), indent=2, ensure_ascii=False),
-                   encoding="utf-8")
-    tmp.replace(path)
-
 
 def load_document(path: str | Path) -> WordLLMDocument:
-    data = json.loads(Path(path).with_suffix(".json").read_text(encoding="utf-8"))
+    data = json.loads(Path(path).with_suffix("").with_suffix(".json").read_text(encoding="utf-8"))
     return document_from_dict(data)
 
 # ---- conversion between model and editor text --------------------------
@@ -181,13 +183,3 @@ def text_to_blocks(text: str, old_doc: WordLLMDocument) -> dict[str,Block]:
         new_block=(Block(id=block_id, kind=kind, level=level,runs=markup_to_runs(line)))
         blocks[block_id]=new_block
     return blocks
-
-def document_to_text(doc: WordLLMDocument) -> str:
-    """One paragraph per line; headings get a leading '#'."""
-    lines = []
-    for b in doc.blocks.values():
-        body = runs_to_markup(b.runs)
-        if b.kind == "heading":
-            body = "#" * max(b.level, 1) + " " + body
-        lines.append(body)
-    return "\n".join(lines)

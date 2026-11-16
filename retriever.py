@@ -20,8 +20,8 @@ def get_model() -> SentenceTransformer:
 class Retriever:
     def __init__(self, path: str | Path, doc:WordLLMDocument) -> None:
         self.path = Path(path)
-        self.index_path = self.path.with_suffix(".npy")
-        self.doc_path = self.index_path.with_suffix(".json")
+        self.index_path = self.path.with_suffix("").with_suffix(".npy")
+        self.doc_path = self.index_path.with_suffix("").with_suffix(".json")
         self.model_name = MODEL_NAME
         self.matrix: np.ndarray | None = None
         self.doc = doc
