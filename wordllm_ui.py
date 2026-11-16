@@ -6,9 +6,8 @@ from textual.containers import VerticalScroll
 import argparse
 from pathlib import Path
 
-from wordllm_doc import WordLLMDocument, load_document, save_document, text_to_blocks, document_to_text
+from wordllm_doc import WordLLMDocument
 from llm_functions import WordProcessorAssistant
-from retriever import Retriever
 
 parser = argparse.ArgumentParser(description="Open a document in the LLM Word Processor")
 parser.add_argument("path", type=str, help="Path to the document file to be opened.")
@@ -35,7 +34,7 @@ class NotepadApp(App):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static(f"Manifest: {self.ai.doc.manifest}", id="manifest")
-        yield TextArea(document_to_text(self.ai.doc), id="editor")
+        yield TextArea(self.ai.doc.get_text(), id="editor")
         yield Input(placeholder="Questions for AI?", id="question")
         with VerticalScroll(id="answer-scroll"):
             yield Markdown("AI response will appear here.", id="answer")
@@ -60,16 +59,13 @@ class NotepadApp(App):
 
     def action_save(self) -> None:
         text = self.query_one(TextArea).text
-        self.ai.doc.blocks = text_to_blocks(text, self.ai.doc)
-        self.ai.retriever.sync(self.ai.doc)
-        self.ai.retriever._save()
-        save_document(self.ai.doc, self.path)
+        self.ai.save_doc_and_retriever(text)
         self.notify("Saved")
 
     def update_all(self, ai_response: str | None = None) -> None:
         self.title = self.ai.doc.title
         self.query_one("#manifest").update(f"Manifest: {self.ai.doc.manifest}")
-        self.query_one('#editor').text = document_to_text(self.ai.doc)
+        self.query_one('#editor').text = self.ai.doc.get_text()
         if ai_response:
             self.query_one('#answer').update(ai_response)
         else:
@@ -101,7 +97,7 @@ if __name__ == "__main__":
             raise FileExistsError(f"File {path} already exists. Use a different path or manually remove the file.")
         else:
             doc = WordLLMDocument(title="New Document", manifest="A general purpose document", blocks=dict())
-            save_document(doc, path)
+            doc.save(path)
     else:
         if not (memory_path.exists()):
             raise FileNotFoundError(f"{path} is missing one or both files. Use the --new flag to create a new document.")

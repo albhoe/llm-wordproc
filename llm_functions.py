@@ -64,6 +64,12 @@ class WordProcessorAssistant():
         self.verbose = verbose
         self.retriever = Retriever(self.doc_path,self.doc)
 
+    def save_doc_and_retriever(self,text):
+        self.doc.blocks = text_to_blocks(text)
+        self.retriever.sync(self.doc)
+        self.retriever._save()
+        self.doc.save(text,self.path)
+
 
     def summarize_doc(self, document: WordLLMDocument, context_window_size: int) -> str:
         try:
@@ -87,7 +93,8 @@ class WordProcessorAssistant():
     def reset_counters(self):
         for v in counters.values():
             v = 0
-        print(counters)
+        if self.verbose>0:
+            print(counters)
 
     def modify_manifest(self, new_manifest:str) -> str:
         self.doc.manifest = new_manifest
