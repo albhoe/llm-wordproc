@@ -62,7 +62,7 @@ class WordLLMDocument:
     def find(self, block_id: str) -> Block | None:
         return self.blocks.get(block_id)
 
-    def save(self,path:Path):
+    def save(self,text:str,path:Path):
         save_document(self,path)
 
     def get_text(self):
