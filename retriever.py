@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from wordllm_doc import WordLLMDocument, load_document, save_document
+from wordllm_doc import WordLLMDocument
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 _model: SentenceTransformer | None = None
@@ -20,8 +20,8 @@ def get_model() -> SentenceTransformer:
 class Retriever:
     def __init__(self, path: str | Path, doc:WordLLMDocument) -> None:
         self.path = Path(path)
-        self.index_path = self.path.with_suffix(".npy")
-        self.doc_path = self.index_path.with_suffix(".json")
+        self.index_path = self.path.with_suffix("").with_suffix(".npy")
+        self.doc_path = self.index_path.with_suffix("").with_suffix(".json")
         self.model_name = MODEL_NAME
         self.matrix: np.ndarray | None = None
         self.doc = doc
@@ -35,11 +35,6 @@ class Retriever:
         if self.doc.embedding_model != MODEL_NAME:
             # Vectors from a different model are meaningless here; start fresh.
             return
-        blocks_dict = self.doc.blocks
-        blocks = list(blocks_dict.values())
-        order = list(blocks_dict.keys())
-        hashes = [b.compute_hash() for b in blocks]
-        texts = [b.text for b in blocks]
         try:
             self.matrix = np.load(self.index_path)
         except:
@@ -56,7 +51,6 @@ class Retriever:
         """Embed new or changed blocks, drop deleted ones, then save.
         Returns the number of blocks re-embedded. Force always rebuilds every block"""
         blocks = self.doc.blocks.values()
-        live_ids = {b.id for b in blocks}
         changed_blocks = [] #If a vector changes, store it here
         changed_positions = [] #If a vector changes, store its row number here
         # Find blocks whose content hash differs from the stored one.
@@ -86,11 +80,9 @@ class Retriever:
     # ---- searching ------------------------------------------------------
 
     def search(self, query: str) -> np.ndarray:
-        blocks_dict = self.doc.blocks
-        blocks = list(blocks_dict.values())
-        order = list(blocks_dict.keys())
         if self.matrix is None:
             return []
         q = get_model().encode([query], normalize_embeddings=True)[0]
         scores = self.matrix @ q                      # cosine similarity
+        return scores
         return scores
