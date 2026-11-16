@@ -13,11 +13,12 @@ from langchain_core.tools import StructuredTool
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_classic.chains.summarize import load_summarize_chain
+import numpy as np
 
 from wordllm_doc import WordLLMDocument, Block, Run, load_document, save_document, document_to_text, text_to_blocks
 from retriever import Retriever
 
-MAX_CONTEXT_WINDOW = 1e6
+MAX_CONTEXT_WINDOW = 10000
 APPROX_CHARS_PER_TOKEN = 8
 
 env=load_dotenv(dotenv_path=".env", override=True)
@@ -77,10 +78,24 @@ class WordProcessorAssistant():
         except Exception as e:
             return f"Error during summarization: {str(e)}"
 
-    def retrieve(self, query:str,k:int):
-        counters['retrieve']+=1
-        if counters['retrieve'] < 5:
-            return self.retriever.search(query,k)
+    def retrieve(self, query:str):
+        if counters['retrieve'] < 1:
+            blocks = list(self.doc.blocks.values())
+            scores = self.retriever.search(query)        
+            top = np.argsort(-scores)
+            response = ""
+            response_len = 0
+            for index in top:
+                text = (f"Block ID:{blocks[index].id}, Block Text:{blocks[index].text}, Similarity: {float(scores[index])}\n")
+                text_len = len(text)
+                if text_len + response_len < MAX_CONTEXT_WINDOW:
+                    response += text
+                    response_len += text_len
+                else:
+                    break
+        
+            counters['retrieve']+=1
+            return response
         else:
             return "Retrieval budget reached. Respond with what you already have."
         
