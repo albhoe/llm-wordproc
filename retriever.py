@@ -85,3 +85,4 @@ class Retriever:
         q = get_model().encode([query], normalize_embeddings=True)[0]
         scores = self.matrix @ q                      # cosine similarity
         return scores
+        return scores
