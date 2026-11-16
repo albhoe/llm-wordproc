@@ -67,9 +67,10 @@ class WordProcessorAssistant():
 
     def save_doc_and_retriever(self,text):
         self.doc.update_from_text(text)
-        self.retriever.sync(self.doc)
+        synced_blocks = self.retriever.sync(self.doc)
         self.retriever._save()
         self.doc.save(self.doc_path)
+        return synced_blocks
 
 
     def summarize_doc(self, document: WordLLMDocument, context_window_size: int) -> str:

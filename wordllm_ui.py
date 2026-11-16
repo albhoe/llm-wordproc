@@ -58,8 +58,8 @@ class NotepadApp(App):
 
     def action_save(self) -> None:
         text = self.query_one(TextArea).text
-        self.ai.save_doc_and_retriever(text)
-        self.notify("Saved")
+        synced_blocks = self.ai.save_doc_and_retriever(text)
+        self.notify(f"Saved. {synced_blocks} synchronized with retriever.")
 
     def update_all(self, ai_response: str | None = None) -> None:
         self.title = self.ai.doc.title
