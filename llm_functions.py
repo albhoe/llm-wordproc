@@ -11,7 +11,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_classic.chains.summarize import load_summarize_chain
 import numpy as np
 
-from wordllm_doc import WordLLMDocument, load_document, text_to_blocks
+from wordllm_doc import WordLLMDocument, load_document
 from retriever import Retriever
 
 MAX_CONTEXT_WINDOW = 10000
@@ -53,10 +53,14 @@ search_tool = StructuredTool.from_function(
 )
 
 class WordProcessorAssistant():
-    def __init__(self, model_name:str = "gemini-3.1-flash-lite", document_path:str = "draft.json", verbose:bool = 0) -> None:
+    def __init__(self, model_name:str = "gemini-3.5-flash-lite", document_path:str = "draft.json", verbose:bool = 0, fresh:bool = False) -> None:
         self.llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=gemini_key)
         self.doc_path = document_path
-        self.doc = load_document(document_path)
+        if fresh:
+            self.doc = WordLLMDocument(title="New Document", manifest="A general purpose document", blocks=dict())
+            self.doc.save(self.doc_path)
+        else:
+            self.doc = load_document(document_path)
         self.manifest = self.doc.manifest
         self.verbose = verbose
         self.retriever = Retriever(self.doc_path,self.doc)
@@ -103,7 +107,7 @@ class WordProcessorAssistant():
         
     def reset_counters(self):
         for v in counters.values():
-            v = 0
+            counters[v] = 0
         if self.verbose>0:
             print(counters)
 
@@ -121,19 +125,18 @@ class WordProcessorAssistant():
     def answer_question(self, question:str, highlight:Optional[str] = None) -> str:
         counters["search"] = 0  # Reset search counter for each question
         counters["retrieve"]=0
-        prompt = f"Document manifest: {self.manifest}. Question: {question}"
+        prompt = f"Document manifest: {self.manifest}\n Question: {question}"
         if highlight:
-            prompt += f" Focus on this highlighted text: {highlight}."
+            prompt += f"\nFocus on this highlighted text: {highlight}."
 
         modify_manifest_tool = StructuredTool.from_function(self.modify_manifest, name="modify_manifest", description="Changes the document manifest to match the new_manifest string. The new_manifest describes a change in the intended tone, style, and 'vibes' of the document, not the factual details or events. Use this tool if and only if the user explictly requests such a change. It does not change the document text, and should not be used as such.")
         rename_document_tool = StructuredTool.from_function(self.rename_document,name="rename_document",description="Changes the internal title of the document to match the new_title string. Note that this does not change the file name in memory.")
-        retriever_tool = StructuredTool.from_function(self.retrieve,name="retrieve",description="Does a fuzzy semantic search for information pertaining to 'query', returning up to k blocks of text.")
+        retriever_tool = StructuredTool.from_function(self.retrieve,name="retrieve",description="Does a fuzzy semantic search for information pertaining to 'query', returning blocks of text up to a length set in the configuration.")
 
-        agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Do what a user requests using the document text and the necessary tools, and respond with a string. Almost every response should be based text obtained from the retriever_tool. A user may highlight a specific section of the document to focus on. If no answer is available in the document or from any tools, respond saying so.")
+        agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Combine information from the retriever_tool and search_tool to do what the user requests, and respond with a string. A user may highlight a specific section of the document to focus on. If the task is not possible with the document or any tools, respond saying so.")
 
         result = agent.invoke({"messages":[{"role":"user","content":prompt}]})
         if self.verbose > 0:
-            #return str(result)
             return("\n\n".join(str(m.type)+":\n"+str(m.content[:self.verbose]) for m in result["messages"]))
         if isinstance(content:=result["messages"][-1].content,str):
             return content

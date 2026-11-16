@@ -6,7 +6,6 @@ from textual.containers import VerticalScroll
 import argparse
 from pathlib import Path
 
-from wordllm_doc import WordLLMDocument
 from llm_functions import WordProcessorAssistant
 
 parser = argparse.ArgumentParser(description="Open a document in the LLM Word Processor")
@@ -25,11 +24,11 @@ class NotepadApp(App):
         Binding("ctrl+q", "quit", "Quit"),
     ]
 
-    def __init__(self, path: str, verbose: bool = False) -> None:
+    def __init__(self, path: str, verbose: bool = False, fresh = False) -> None:
         super().__init__()
         self.path = path
         self.verbose = verbose
-        self.ai = WordProcessorAssistant(document_path=path+".json", verbose=verbose)
+        self.ai = WordProcessorAssistant(document_path=path+".json", verbose=verbose, fresh = fresh)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -73,7 +72,7 @@ class NotepadApp(App):
 
     @on(Input.Submitted, "#question")
     def ask_question(self, event: Input.Submitted) -> None:
-        self.query_one("#answer").update("Thinking...")
+        self.notify("Thinking...")
         question = event.value.strip()
         if not question:
             return
@@ -92,13 +91,13 @@ if __name__ == "__main__":
     path = args.path
     memory_path = Path(str(path)).with_suffix(".json")
     index_path = Path(str(path)+"_index").with_suffix(".npy")
+    fresh = False
     if new_flag := args.new:
         if Path(memory_path).exists() or Path(index_path).exists():
             raise FileExistsError(f"File {path} already exists. Use a different path or manually remove the file.")
         else:
-            doc = WordLLMDocument(title="New Document", manifest="A general purpose document", blocks=dict())
-            doc.save(path)
+            fresh = True
     else:
         if not (memory_path.exists()):
             raise FileNotFoundError(f"{path} is missing one or both files. Use the --new flag to create a new document.")
-    NotepadApp(path, verbose=args.verbose).run()
+    NotepadApp(path, verbose=args.verbose, fresh=fresh).run()
