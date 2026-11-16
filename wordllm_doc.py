@@ -2,8 +2,6 @@ from __future__ import annotations
 import re
 import json
 import uuid
-import numpy
-from sentence_transformers import SentenceTransformer
 import hashlib
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -64,11 +62,14 @@ class WordLLMDocument:
     def find(self, block_id: str) -> Block | None:
         return self.blocks.get(block_id)
 
-    def save(self,text:str,path:Path):
+    def save(self,path:Path):
         save_document(self,path)
 
     def get_text(self):
         return document_to_text(self)
+
+    def update_from_text(self,text:str):
+        self.blocks = text_to_blocks(text,self)
 
 
 # ---- JSON serialization -------------------------------------------------

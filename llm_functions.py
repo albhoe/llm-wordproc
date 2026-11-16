@@ -2,19 +2,15 @@
 import os
 from dotenv import load_dotenv
 from typing import Optional
-from langchain_classic.schema import Document
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import create_agent
-from langchain_core.tools import tool
 from langchain_tavily import TavilySearch
 from langchain_core.documents import Document as LangchainDocument
-from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_core.tools import StructuredTool
-from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_classic.chains.summarize import load_summarize_chain
 
-from wordllm_doc import WordLLMDocument, Block, Run, load_document, save_document, document_to_text, text_to_blocks
+from wordllm_doc import WordLLMDocument, load_document, text_to_blocks
 from retriever import Retriever
 
 MAX_CONTEXT_WINDOW = 1e6
@@ -65,15 +61,15 @@ class WordProcessorAssistant():
         self.retriever = Retriever(self.doc_path,self.doc)
 
     def save_doc_and_retriever(self,text):
-        self.doc.blocks = text_to_blocks(text)
+        self.doc.update_from_text(text)
         self.retriever.sync(self.doc)
         self.retriever._save()
-        self.doc.save(text,self.path)
+        self.doc.save(self.doc_path)
 
 
     def summarize_doc(self, document: WordLLMDocument, context_window_size: int) -> str:
         try:
-            text = document_to_text(document)
+            text = document.get_text()
             if len(text) > context_window_size:
                 #If text is long, use map-reduce technique to summarize in chunks
                 docs = chunk_text(text, chunk_size=context_window_size, chunk_overlap=200)
@@ -98,12 +94,12 @@ class WordProcessorAssistant():
 
     def modify_manifest(self, new_manifest:str) -> str:
         self.doc.manifest = new_manifest
-        save_document(self.doc, self.doc_path)
+        self.doc.save(self.doc_path)
         return f"Manifest updated to: {new_manifest}"
 
     def rename_document(self, new_title:str) -> str:
         self.doc.title = new_title
-        save_document(self.doc, self.doc_path)
+        self.doc.save(self.doc_path)
         return f"Document title updated to: {new_title}"
     
 
