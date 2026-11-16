@@ -85,7 +85,7 @@ class Retriever:
         return len(changed_positions)
     # ---- searching ------------------------------------------------------
 
-    def search(self, query: str, k: int = 5) -> str:
+    def search(self, query: str) -> np.ndarray:
         blocks_dict = self.doc.blocks
         blocks = list(blocks_dict.values())
         order = list(blocks_dict.keys())
@@ -93,5 +93,4 @@ class Retriever:
             return []
         q = get_model().encode([query], normalize_embeddings=True)[0]
         scores = self.matrix @ q                      # cosine similarity
-        top = np.argsort(-scores)[:k]
-        return "\n".join([(f"Block ID:{blocks[i].id}, Block Text:{blocks[i].text}, Similarity: {float(scores[i])}") for i in top])
+        return scores
