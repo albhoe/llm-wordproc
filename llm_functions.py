@@ -14,7 +14,7 @@ import numpy as np
 from wordllm_doc import WordLLMDocument, load_document
 from retriever import Retriever
 
-MAX_CONTEXT_WINDOW = 10000
+MAX_CONTEXT_WINDOW = 4096
 APPROX_CHARS_PER_TOKEN = 8
 
 env=load_dotenv(dotenv_path=".env", override=True)
@@ -92,6 +92,7 @@ class WordProcessorAssistant():
             top = np.argsort(-scores)
             response = ""
             response_len = 0
+            chunk_num=0
             for index in top:
                 lo = max(0,index-1)
                 hi = min(index+1,len(blocks)-1)
@@ -101,13 +102,15 @@ class WordProcessorAssistant():
                 if index < hi:
                     needed_indices.append(hi)
                 neighbor_blocks = [blocks[i] for i in needed_indices]
-                text = f"(Block IDs:{[b.id for b in neighbor_blocks]}, Chunk Text:{"\n".join([b.text for b in neighbor_blocks])}, Similarity: {float(scores[index])})\n"
+                text = "\n".join([f"Block ID:{b.id}, Chunk Text:{b.text}" for b in neighbor_blocks])
+                text = f"Chunk {chunk_num}("+text+f") Similarity:{float(scores[index])} \n"
                 text_len = len(text)
                 if text_len + response_len < MAX_CONTEXT_WINDOW:
                     response += text
                     response_len += text_len
                 else:
                     break
+                chunk_num += 1
         
             counters['retrieve']+=1
             return response
