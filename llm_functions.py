@@ -12,6 +12,7 @@ from langchain_classic.chains.summarize import load_summarize_chain
 import numpy as np
 
 from wordllm_doc import WordLLMDocument, load_document
+from fuzzysearch import FuzzySearchIterator
 from retriever import Retriever
 
 MAX_CONTEXT_WINDOW = 4096
@@ -64,6 +65,7 @@ class WordProcessorAssistant():
         self.manifest = self.doc.manifest
         self.verbose = verbose
         self.retriever = Retriever(self.doc_path,self.doc)
+        self.fsiterator:FuzzySearchIterator | None = None
 
     def save_doc_and_retriever(self,text):
         self.doc.update_from_text(text)
@@ -71,7 +73,6 @@ class WordProcessorAssistant():
         self.retriever._save()
         self.doc.save(self.doc_path)
         return synced_blocks
-
 
     def summarize_doc(self, document: WordLLMDocument, context_window_size: int) -> str:
         try:
@@ -86,39 +87,42 @@ class WordProcessorAssistant():
             return f"Error during summarization: {str(e)}"
 
     def retrieve(self, query:str):
-        if counters['retrieve'] < 1:
-            blocks = list(self.doc.blocks.values())
-            scores = self.retriever.search(query)        
-            top = np.argsort(-scores)
-            response = ""
-            response_len = 0
-            chunk_num=0
-            for index in top:
-                lo = max(0,index-1)
-                hi = min(index+1,len(blocks)-1)
-                needed_indices = [index]
-                if lo < index:
-                    needed_indices = [lo,index]
-                if index < hi:
-                    needed_indices.append(hi)
-                neighbor_blocks = [blocks[i] for i in needed_indices]
-                text = "\n".join([f"Block ID:{b.id}, Chunk Text:{b.text}" for b in neighbor_blocks])
-                text = f"Chunk {chunk_num}("+text+f") Similarity:{float(scores[index])} \n"
-                text_len = len(text)
-                if text_len + response_len < MAX_CONTEXT_WINDOW:
-                    response += text
-                    response_len += text_len
-                else:
-                    break
-                chunk_num += 1
-        
-            counters['retrieve']+=1
-            return response
-        else:
-            return "Retrieval budget reached. Respond with what you already have."
-        
+        try:
+            if counters['retrieve'] < 1:
+                blocks = list(self.doc.blocks.values())
+                scores = self.retriever.search(query)        
+                top = np.argsort(-scores)
+                response = ""
+                response_len = 0
+                chunk_num=0
+                for index in top:
+                    lo = max(0,index-1)
+                    hi = min(index+1,len(blocks)-1)
+                    needed_indices = [index]
+                    if lo < index:
+                        needed_indices = [lo,index]
+                    if index < hi:
+                        needed_indices.append(hi)
+                    neighbor_blocks = [blocks[i] for i in needed_indices]
+                    text = "\n".join([f"Block ID:{b.id}, Chunk Text:{b.text}" for b in neighbor_blocks])
+                    text = f"Chunk {chunk_num}("+text+f") Similarity:{float(scores[index])} \n"
+                    text_len = len(text)
+                    if text_len + response_len < MAX_CONTEXT_WINDOW:
+                        response += text
+                        response_len += text_len
+                    else:
+                        break
+                    chunk_num += 1
+            
+                counters['retrieve']+=1
+                return response
+            else:
+                return "Retrieval budget reached. Respond with what you already have."
+        except Exception as e:
+            return f"Error retrieving context: {e}"
+
     def reset_counters(self):
-        for v in counters.values():
+        for v in counters.keys():
             counters[v] = 0
         if self.verbose>0:
             print(counters)
@@ -132,11 +136,42 @@ class WordProcessorAssistant():
         self.doc.title = new_title
         self.doc.save(self.doc_path)
         return f"Document title updated to: {new_title}"
-    
 
+    def create_fsiterator(self, block_ids:list[str])-> str:
+        try:
+            nonmatch = set(block_ids)-self.doc.blocks.keys()
+            if len(nonmatch)==0:
+                self.fsiterator = FuzzySearchIterator(block_ids)
+                res = "Iterator created successfully."
+                if self.verbose > 0: res += f" block_ids: {block_ids}"
+                return res
+            else:
+                return f"{nonmatch} was not in the document block list. Double check it."
+        except Exception as e:
+            return f"Error creating fsiterator {e}"
+
+    def destroy_fsiterator(self):
+        self.fsiterator = None
+        return
+
+    def fsiterator_next(self) -> Optional[int]:
+        """Outputs the line number of the next block_id in the iterator"""
+        if self.fsiterator:
+            id = self.fsiterator.next()
+            return list(self.doc.blocks.keys()).index(id)
+        else: return None
+
+    def fsiterator_prev(self) -> Optional[int]:
+        """Outputs the line number of the previous block_id in the iterator"""
+        if self.fsiterator:
+            id = self.fsiterator.prev()
+            return list(self.doc.blocks.keys()).index(id)
+        else: return None
+    
     def answer_question(self, question:str, highlight:Optional[str] = None) -> str:
         counters["search"] = 0  # Reset search counter for each question
         counters["retrieve"]=0
+        self.reset_counters()
         prompt = f"Document manifest: {self.manifest}\n Question: {question}"
         if highlight:
             prompt += f"\nFocus on this highlighted text: {highlight}."
@@ -144,8 +179,9 @@ class WordProcessorAssistant():
         modify_manifest_tool = StructuredTool.from_function(self.modify_manifest, name="modify_manifest", description="Changes the document manifest to match the new_manifest string. The new_manifest describes a change in the intended tone, style, and 'vibes' of the document, not the factual details or events. Use this tool if and only if the user explictly requests such a change. It does not change the document text, and should not be used as such.")
         rename_document_tool = StructuredTool.from_function(self.rename_document,name="rename_document",description="Changes the internal title of the document to match the new_title string. Note that this does not change the file name in memory.")
         retriever_tool = StructuredTool.from_function(self.retrieve,name="retrieve",description="Does a fuzzy semantic search for information pertaining to 'query', returning chunks of text surrounding the semantically similar block up to a length set in the configuration.")
+        create_fsiterator_tool = StructuredTool.from_function(self.create_fsiterator, name="create_fsiterator", description="Creates an iterator object that will be visible on the user interface. If a user asks for sections of text, put the appropriate block_ids into this function. Do not put strings other than valid block ids into the list.")
 
-        agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Combine information from the retriever_tool and search_tool to do what the user requests, and respond with a string. A user may highlight a specific section of the document to focus on. If the task is not possible with the document or any tools, respond saying so.")
+        agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool,create_fsiterator_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Combine information from the retriever_tool and search_tool to do what the user requests, and respond with a string. A user may highlight a specific section of the document to focus on. If the task is not possible with the document or any tools, respond saying so.")
 
         result = agent.invoke({"messages":[{"role":"user","content":prompt}]})
         if self.verbose > 0:
