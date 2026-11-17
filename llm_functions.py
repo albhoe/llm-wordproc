@@ -93,7 +93,15 @@ class WordProcessorAssistant():
             response = ""
             response_len = 0
             for index in top:
-                text = (f"Block ID:{blocks[index].id}, Block Text:{blocks[index].text}, Similarity: {float(scores[index])}\n")
+                lo = max(0,index-1)
+                hi = min(index+1,len(blocks)-1)
+                needed_indices = [index]
+                if lo < index:
+                    needed_indices = [lo,index]
+                if index < hi:
+                    needed_indices.append(hi)
+                neighbor_blocks = [blocks[i] for i in needed_indices]
+                text = f"(Block IDs:{[b.id for b in neighbor_blocks]}, Chunk Text:{"\n".join([b.text for b in neighbor_blocks])}, Similarity: {float(scores[index])})\n"
                 text_len = len(text)
                 if text_len + response_len < MAX_CONTEXT_WINDOW:
                     response += text
@@ -132,7 +140,7 @@ class WordProcessorAssistant():
 
         modify_manifest_tool = StructuredTool.from_function(self.modify_manifest, name="modify_manifest", description="Changes the document manifest to match the new_manifest string. The new_manifest describes a change in the intended tone, style, and 'vibes' of the document, not the factual details or events. Use this tool if and only if the user explictly requests such a change. It does not change the document text, and should not be used as such.")
         rename_document_tool = StructuredTool.from_function(self.rename_document,name="rename_document",description="Changes the internal title of the document to match the new_title string. Note that this does not change the file name in memory.")
-        retriever_tool = StructuredTool.from_function(self.retrieve,name="retrieve",description="Does a fuzzy semantic search for information pertaining to 'query', returning blocks of text up to a length set in the configuration.")
+        retriever_tool = StructuredTool.from_function(self.retrieve,name="retrieve",description="Does a fuzzy semantic search for information pertaining to 'query', returning chunks of text surrounding the semantically similar block up to a length set in the configuration.")
 
         agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Combine information from the retriever_tool and search_tool to do what the user requests, and respond with a string. A user may highlight a specific section of the document to focus on. If the task is not possible with the document or any tools, respond saying so.")
 

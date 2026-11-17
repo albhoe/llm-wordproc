@@ -24,15 +24,16 @@ class Retriever:
         self.doc_path = self.index_path.with_suffix("").with_suffix(".json")
         self.model_name = MODEL_NAME
         self.matrix: np.ndarray | None = None
+        self.verbose:bool = False
         self.doc = doc
-        self._load()
+        self._load(doc)
 
     # ---- persistence ----------------------------------------------------
 
-    def _load(self) -> None:
+    def _load(self,doc) -> None:
         if not (self.doc_path.exists()):
             return
-        if self.doc.embedding_model != MODEL_NAME:
+        if doc.embedding_model != MODEL_NAME:
             # Vectors from a different model are meaningless here; start fresh.
             return
         try:
@@ -40,7 +41,8 @@ class Retriever:
         except:
             #If matrix cannot be read, forcibly rebuild it
             print("matrix not found.")
-            print(f"force rebuilt {self.sync(self.doc,force=True)} blocks")
+            print(f"force rebuilt {self.sync(doc,force=True)} blocks")
+            self._save()
 
     def _save(self) -> None:
         np.save(self.index_path,self.matrix)
@@ -50,33 +52,34 @@ class Retriever:
     def sync(self, doc: WordLLMDocument, force=False) -> int:
         """Embed new or changed blocks, drop deleted ones, then save.
         Returns the number of blocks re-embedded. Force always rebuilds every block"""
-        blocks = self.doc.blocks.values()
+        blocks = list(doc.blocks.values())
         changed_blocks = [] #If a vector changes, store it here
         changed_positions = [] #If a vector changes, store its row number here
         # Find blocks whose content hash differs from the stored one.
         for i,block in enumerate(blocks):
             hash,changed = block.refresh_hash()
             if changed or force:
+                if self.verbose:
+                    print(f"Synced block {block.text}")
                 changed_blocks.append(block)
                 changed_positions.append(i)
             
         assert (len(changed_positions)==len(changed_blocks))
 
         # Embed the changed blocks in one batch.
-        if changed_positions:
-            #Save the hashes to deno
+        if len(changed_positions) > 0:
             new_encodings = get_model().encode([b.text for b in changed_blocks], normalize_embeddings=True)
             if self.matrix is None:
                 self.matrix=new_encodings
-                return len(changed_positions)
+                return 1000+len(changed_positions)
             
+            # Rebuild the matrix in document order.
             new_position_2_vecs = dict(zip(changed_positions,new_encodings))
-
-        # Rebuild the matrix in document order.
-            num_rows, num_cols = self.matrix.shape
+            num_rows = len(blocks)
             updated_rows = [(new_position_2_vecs[i] if i in changed_positions else self.matrix[i]) for i in range(num_rows)]
             self.matrix = np.stack(updated_rows)
-        return len(changed_positions)
+            assert(not (self.matrix is None))
+        return -len(changed_positions)
     # ---- searching ------------------------------------------------------
 
     def search(self, query: str) -> np.ndarray:
@@ -84,5 +87,4 @@ class Retriever:
             return []
         q = get_model().encode([query], normalize_embeddings=True)[0]
         scores = self.matrix @ q                      # cosine similarity
-        return scores
         return scores

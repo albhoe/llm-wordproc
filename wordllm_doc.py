@@ -54,7 +54,7 @@ class WordLLMDocument:
 
     def add_paragraph(self, text: str, kind: BlockKind = "paragraph",
                       level: int = 0) -> Block:
-        block = Block(id=self.new_block_id(), kind=kind, level=level, runs=[Run(text=text)])
+        block = Block(id=self.new_block_id(), kind=kind, level=level, runs=[Run(text=text)], hash="")
         self.blocks[block.id] = block
         return block
     
@@ -171,7 +171,8 @@ def markup_to_runs(text: str) -> list[Run]:
 
 def text_to_blocks(text: str, old_doc: WordLLMDocument) -> dict[str,Block]:
     """Rebuild blocks from text. Reuses old IDs by line position when possible."""
-    old_ids = [b.id for b in old_doc.blocks.values()]
+    old_blocks = list(old_doc.blocks.values())
+    old_ids = [b.id for b in old_blocks]
     blocks = dict()
     for i, line in enumerate(text.split("\n")):
         kind, level = "paragraph", 0
@@ -181,5 +182,9 @@ def text_to_blocks(text: str, old_doc: WordLLMDocument) -> dict[str,Block]:
             line = line[hashes:].lstrip()
         block_id = old_ids[i] if i < len(old_ids) else old_doc.new_block_id()
         new_block=(Block(id=block_id, kind=kind, level=level,runs=markup_to_runs(line)))
+        if i < len(old_ids):
+            new_block.hash = old_blocks[i].hash
+        else:
+            new_block.hash=""
         blocks[block_id]=new_block
     return blocks
