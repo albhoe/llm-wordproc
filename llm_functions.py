@@ -88,7 +88,7 @@ class WordProcessorAssistant():
 
     def retrieve(self, query:str):
         try:
-            if counters['retrieve'] < 1:
+            if counters['retrieve'] < 2:
                 scores = self.retriever.search(query)        
                 top = np.argsort(-scores)
                 response = ""
@@ -114,6 +114,7 @@ class WordProcessorAssistant():
                     chunk_num += 1
             
                 counters['retrieve']+=1
+                if self.verbose: response = "query:{query}, response:"+response
                 return response
             else:
                 return "Retrieval budget reached. Respond with what you already have."
