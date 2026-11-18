@@ -1,5 +1,6 @@
 *.json
 .env
 *_test.py
+test_*.py
 *.npy
 *__pycache__*

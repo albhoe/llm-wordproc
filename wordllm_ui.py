@@ -3,6 +3,8 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Footer, Header, Input, TextArea, Static, Markdown
 from textual.containers import VerticalScroll
+from textual.widgets.text_area import Selection
+from typing import Optional
 import argparse
 from pathlib import Path
 
@@ -17,11 +19,20 @@ parser.add_argument("-v","--verbose",type=int,default=0,help="Enable verbose out
 # ---- the app -------------------------------------------------------------
 
 class NotepadApp(App):
+    CSS = """
+    TextArea .text-area--selection {
+        background: yellow;
+        color: black;
+    }
+    """
+
     BINDINGS = [
         Binding("ctrl+s", "save", "Save"),
         Binding("ctrl+b", "toggle_bold", "Bold"),
         Binding("ctrl+i", "toggle_italic", "Italic"),
         Binding("ctrl+q", "quit", "Quit"),
+        Binding("ctrl+comma", "prev", "Previous"),
+        Binding("ctrl+full_stop", "next", "Next"),
     ]
 
     def __init__(self, path: str, verbose: bool = False, fresh = False) -> None:
@@ -61,14 +72,44 @@ class NotepadApp(App):
         synced_blocks = self.ai.save_doc_and_retriever(text)
         self.notify(f"Saved. {synced_blocks} synchronized with retriever.")
 
+    def action_prev(self) -> None:
+        if (i:=self.ai.fsiterator_prev()) is not None:
+            self.jump_to(torow=i)
+            self.notify(f"Result {self.ai.fsiterator.progress()}")
+
+    def action_next(self) -> None:
+        if (i:=self.ai.fsiterator_next()) is not None:
+            self.jump_to(torow=i)
+            self.notify(f"Result {self.ai.fsiterator.progress()}")
+
+    def jump_to(self, torow:int, tocol:Optional[int]=None, fromrow:Optional[int]=None, fromcol:Optional[int]=None,):
+            editor = self.query_one('#editor',TextArea)
+            if fromcol and fromcol:
+                #If there is a starting position, begin with the cursor there
+                editor.move_cursor((fromcol,fromcol))
+
+            if tocol:
+                #If the ending position is specified, move the cursor there selecting and centering
+                editor.move_cursor((torow,0))
+                editor.move_cursor((torow,tocol),select=True,center=True)
+            else:
+                #If no ending position is specified, go to the end of the row 
+                editor.select_line(torow)
+            editor.focus()
+            
+
     def update_all(self, ai_response: str | None = None) -> None:
         self.title = self.ai.doc.title
         self.query_one("#manifest").update(f"Manifest: {self.ai.doc.manifest}")
-        self.query_one('#editor').text = self.ai.doc.get_text()
+        # Hold onto this. At some point the document will be able to edit itself, so the UI should jump the cursor to that part.
+        # self.query_one('#editor').text = self.ai.doc.get_text()
+        editor = self.query_one('#editor')
         if ai_response:
             self.query_one('#answer').update(ai_response)
         else:
             self.query_one('#answer').update("AI response will appear here.")
+
+        self.action_next()
 
     @on(Input.Submitted, "#question")
     def ask_question(self, event: Input.Submitted) -> None:
