@@ -89,7 +89,6 @@ class WordProcessorAssistant():
     def retrieve(self, query:str):
         try:
             if counters['retrieve'] < 1:
-                blocks = list(self.doc.blocks.values())
                 scores = self.retriever.search(query)        
                 top = np.argsort(-scores)
                 response = ""
@@ -97,15 +96,15 @@ class WordProcessorAssistant():
                 chunk_num=0
                 for index in top:
                     lo = max(0,index-1)
-                    hi = min(index+1,len(blocks)-1)
+                    hi = min(index+1,len(self.doc.blocks)-1)
                     needed_indices = [index]
                     if lo < index:
                         needed_indices = [lo,index]
                     if index < hi:
                         needed_indices.append(hi)
-                    neighbor_blocks = [blocks[i] for i in needed_indices]
-                    text = "\n".join([f"Block ID:{b.id}, Chunk Text:{b.text}" for b in neighbor_blocks])
-                    text = f"Chunk {chunk_num}("+text+f") Similarity:{float(scores[index])} \n"
+                    neighbor_blocks = [self.doc.blocks[i] for i in needed_indices]
+                    text = "\n".join([f"Block ID:{b.id}, Block Text:{b.text}" for b in neighbor_blocks])
+                    text = f"Chunk {chunk_num} Content ("+text+f") Chunk Similarity:{float(scores[index])} \n"
                     text_len = len(text)
                     if text_len + response_len < MAX_CONTEXT_WINDOW:
                         response += text
@@ -139,7 +138,7 @@ class WordProcessorAssistant():
 
     def create_fsiterator(self, block_ids:list[str])-> str:
         try:
-            nonmatch = set(block_ids)-self.doc.blocks.keys()
+            nonmatch = set(block_ids)-set([b.id for b in self.doc.blocks])
             if len(nonmatch)==0:
                 self.fsiterator = FuzzySearchIterator(block_ids)
                 res = "Iterator created successfully."
@@ -158,7 +157,7 @@ class WordProcessorAssistant():
         """Outputs the line number of the next block_id in the iterator"""
         if self.fsiterator:
             id = self.fsiterator.next()
-            return list(self.doc.blocks.keys()).index(id)
+            return [b.id for b in self.doc.blocks].index(id)
         else: 
             return None
 
@@ -166,7 +165,7 @@ class WordProcessorAssistant():
         """Outputs the line number of the previous block_id in the iterator"""
         if self.fsiterator:
             id = self.fsiterator.prev()
-            return list(self.doc.blocks.keys()).index(id)
+            return [b.id for b in self.doc.blocks].index(id)
         else: 
             return None
     

@@ -52,7 +52,7 @@ class Retriever:
     def sync(self, doc: WordLLMDocument, force=False) -> int:
         """Embed new or changed blocks, drop deleted ones, then save.
         Returns the number of blocks re-embedded. Force always rebuilds every block"""
-        blocks = list(doc.blocks.values())
+        blocks = doc.blocks
         changed_blocks = [] #If a vector changes, store it here
         changed_positions = [] #If a vector changes, store its row number here
         # Find blocks whose content hash differs from the stored one.

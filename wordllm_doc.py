@@ -45,7 +45,7 @@ class WordLLMDocument:
     title: str = "Untitled"
     manifest: str = "A document for general use." #Explains the overall "vibe" of the document for the LLM.
     embedding_model:str = "all-MiniLM-L6-v2"
-    blocks: dict[str, Block] = field(default_factory=dict())
+    blocks: list[Block] = field(default_factory=dict())
     version: int = 1                    # bump when the schema changes
 
     # ---- helpers -------------------------------------------------------
@@ -54,12 +54,16 @@ class WordLLMDocument:
 
     def add_paragraph(self, text: str, kind: BlockKind = "paragraph",
                       level: int = 0) -> Block:
+        """Adds a new paragraph in the form of a block at the end of the block list"""
         block = Block(id=self.new_block_id(), kind=kind, level=level, runs=[Run(text=text)], hash="")
-        self.blocks[block.id] = block
+        self.blocks.append(block)
         return block
     
     def find(self, block_id: str) -> Block | None:
-        return self.blocks.get(block_id)
+        for b in self.blocks:
+            if b.id == block_id:
+                return b
+        return None
 
     def save(self,path:Path):
         path = Path(path).with_suffix("").with_suffix(".json")
@@ -71,7 +75,7 @@ class WordLLMDocument:
 
     def get_text(self):
         lines = []
-        for b in self.blocks.values():
+        for b in self.blocks:
             body = runs_to_markup(b.runs)
             if b.kind == "heading":
                 body = "#" * max(b.level, 1) + " " + body
@@ -102,7 +106,7 @@ def document_to_dict(doc: WordLLMDocument) -> dict:
                 "runs": [asdict(r) for r in b.runs],
                 "hash": b.hash
             }
-            for b in doc.blocks.values()
+            for b in doc.blocks
         ],
     }
 
@@ -115,14 +119,14 @@ def document_from_dict(data: dict) -> WordLLMDocument:
     embedding_model = data.get("embedding_model","all-MiniLM-L6-v2")
     if version > SCHEMA_VERSION:
         raise ValueError(f"Document version {version} is newer than supported")
-    blocks = dict()
+    blocks = []
     for b in data.get("blocks", []):
-        blocks[b["id"]] = Block(
+        blocks.append(Block(
             id=b["id"],
             kind=b["kind"],
             level=b.get("level", 0),
             runs=[Run(**r) for r in b.get("runs", [])],
-            hash=b.get("hash","")
+            hash=b.get("hash",""))
         )
     return WordLLMDocument(title=data.get("title", "Untitled"), manifest=manifest, blocks=blocks,
                     version=version, embedding_model=embedding_model)
@@ -171,9 +175,9 @@ def markup_to_runs(text: str) -> list[Run]:
 
 def text_to_blocks(text: str, old_doc: WordLLMDocument) -> dict[str,Block]:
     """Rebuild blocks from text. Reuses old IDs by line position when possible."""
-    old_blocks = list(old_doc.blocks.values())
+    old_blocks = old_doc.blocks
     old_ids = [b.id for b in old_blocks]
-    blocks = dict()
+    blocks = []
     for i, line in enumerate(text.split("\n")):
         kind, level = "paragraph", 0
         if line.startswith("#"):
@@ -186,5 +190,5 @@ def text_to_blocks(text: str, old_doc: WordLLMDocument) -> dict[str,Block]:
             new_block.hash = old_blocks[i].hash
         else:
             new_block.hash=""
-        blocks[block_id]=new_block
+        blocks.append(new_block)
     return blocks
