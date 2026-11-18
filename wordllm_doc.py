@@ -48,7 +48,9 @@ class WordLLMDocument:
     embedding_model:str = "all-MiniLM-L6-v2"
     blocks: list[Block] = field(default_factory=dict())
     version: int = 1                    # bump when the schema changes
-    index:dict[str,int] = {b.id :i for b,i in enumerate(blocks)}
+    
+    def reindex(self): 
+        self.index={b.id :i for i,b in enumerate(self.blocks)}
 
     # ---- helpers -------------------------------------------------------
     def new_block_id(self) -> str:
@@ -84,7 +86,7 @@ class WordLLMDocument:
 
     def update_from_text(self,text:str):
         self.blocks = text_to_blocks(text,self)
-        self.index = {b.id :i for b,i in enumerate(self.blocks)}
+        self.reindex()
 
 
 # ---- JSON serialization -------------------------------------------------
@@ -136,7 +138,9 @@ def document_from_dict(data: dict) -> WordLLMDocument:
 
 def load_document(path: str | Path) -> WordLLMDocument:
     data = json.loads(Path(path).with_suffix("").with_suffix(".json").read_text(encoding="utf-8"))
-    return document_from_dict(data)
+    doc = document_from_dict(data)
+    doc.reindex()
+    return doc
 
 # ---- conversion between model and editor text --------------------------
 
