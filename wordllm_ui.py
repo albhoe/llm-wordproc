@@ -102,7 +102,7 @@ class NotepadApp(App):
         self.title = self.ai.doc.title
         self.query_one("#manifest").update(f"Manifest: {self.ai.doc.manifest}")
         # Hold onto this. At some point the document will be able to edit itself, so the UI should jump the cursor to that part.
-        # self.query_one('#editor').text = self.ai.doc.get_text()
+        self.query_one('#editor').text = self.ai.doc.get_text()
         editor = self.query_one('#editor')
         if ai_response:
             self.query_one('#answer').update(ai_response)
@@ -117,12 +117,19 @@ class NotepadApp(App):
         question = event.value.strip()
         if not question:
             return
-        highlight = self.query_one(TextArea).selected_text
+        editor = self.query_one(TextArea)
+        selected = editor.selected_text
+        r1,c1 = editor.selection.start
+        r2,c2 = editor.selection.end
+        #self.notify(f"selected {startrow},{startcol} to {end}, select text: {select}")
         try:
-            answer = self.ai.answer_question(question, highlight=highlight)
+            answer = self.ai.answer_question(question, selected=selected, selected_location=((r1,c1),(r2,c2)))
         except Exception as e:
             answer = f"Sorry, there was an exception with your request: {e}"
         self.update_all(ai_response=answer)
+        #Reset cursor to their initial position.
+        editor.move_cursor(location=(r1,c1),center=True)
+        return
 
 
 

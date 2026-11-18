@@ -59,13 +59,14 @@ class WordProcessorAssistant():
         self.doc_path = document_path
         if fresh:
             self.doc = WordLLMDocument(title="New Document", manifest="A general purpose document", blocks=dict())
-            self.doc.save(self.doc_path)
         else:
             self.doc = load_document(document_path)
+        self.retriever = Retriever(self.doc_path,self.doc)
         self.manifest = self.doc.manifest
         self.verbose = verbose
-        self.retriever = Retriever(self.doc_path,self.doc)
         self.fsiterator:FuzzySearchIterator | None = None
+        self.selection: tuple[tuple[int,int],tuple[int,int]] = ((0,0),(0,0))
+        self.save_doc_and_retriever("")
 
     def save_doc_and_retriever(self,text):
         self.doc.update_from_text(text)
@@ -170,20 +171,39 @@ class WordProcessorAssistant():
         else: 
             return None
     
-    def answer_question(self, question:str, highlight:Optional[str] = None) -> str:
+    def answer_question(self, question:str, selected:Optional[str] = None, selected_location:tuple[tuple[int,int],tuple[int,int]]=((0,0),(0,0))) -> str:
         counters["search"] = 0  # Reset search counter for each question
         counters["retrieve"]=0
         self.reset_counters()
+        ((r1,c1),(r2,c2)) = selected_location
+        selected_block_ids = [self.doc.blocks[ri].id for ri in range(r1,r2+1)]
         prompt = f"Document manifest: {self.manifest}\n Question: {question}"
-        if highlight:
-            prompt += f"\nFocus on this highlighted text: {highlight}."
+        if selected:
+            prompt += f"\nFocus on this selected text: \"{selected}\" in blocks [{selected_block_ids}]."
 
         modify_manifest_tool = StructuredTool.from_function(self.modify_manifest, name="modify_manifest", description="Changes the document manifest to match the new_manifest string. The new_manifest describes a change in the intended tone, style, and 'vibes' of the document, not the factual details or events. Use this tool if and only if the user explictly requests such a change. It does not change the document text, and should not be used as such.")
         rename_document_tool = StructuredTool.from_function(self.rename_document,name="rename_document",description="Changes the internal title of the document to match the new_title string. Note that this does not change the file name in memory.")
         retriever_tool = StructuredTool.from_function(self.retrieve,name="retrieve",description="Does a fuzzy semantic search for information pertaining to 'query', returning chunks of text surrounding the semantically similar block up to a length set in the configuration.")
         create_fsiterator_tool = StructuredTool.from_function(self.create_fsiterator, name="create_fsiterator", description="Creates an iterator object that will be visible on the user interface. If a user asks for sections of text, put the appropriate block_ids into this function. Do not put strings other than valid block ids into the list.")
+        def edit_block(block_id:str,text:str) -> str:
+            (r1,c1),(r2,c2) = selected_location
+            ri = self.doc.index[block_id]
+            startbuffer=""
+            endbuffer=""
+            block = self.doc.blocks[self.doc.index[block_id]]
+            if ri < r1 or r2 < ri:
+                return "This block is outside the user's selected range, and therefore should not be modified. Confirm with the user."
+            #If the block contains the endpoint of the selected range (ri==r1)|(ri==r2), enforce the constraint based on one or both columns. Otherwise, tool is free to modify everything.
+            if r1==ri:
+                startbuffer = block.text[:c1]
+            if ri==r2:
+                endbuffer = block.text[c1:]
+            block.update_from_text(startbuffer+text+endbuffer)
+            return f"Successfully wrote {len(text)} characters"
+        edit_block_tool = StructuredTool.from_function(edit_block,name="edit_block",description="Edits the text field of a particular block. Will be constrained to the area of text selected by the user. Consider whether the edited text will have logical flow and correct grammar with the text preceeding and following it, as the surrounding text will be unchanged.")
 
-        agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool,create_fsiterator_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Combine information from the retriever_tool and search_tool to do what the user requests, and respond with a string. A user may highlight a specific section of the document to focus on. If the task is not possible with the document or any tools, respond saying so.")
+
+        agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool,create_fsiterator_tool,edit_block_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Combine information from the retriever_tool and search_tool to do what the user requests, and respond with a string. A user may select a specific section of the document to focus on. If the task is not possible with the document or any tools, respond saying so.")
 
         result = agent.invoke({"messages":[{"role":"user","content":prompt}]})
         if self.verbose > 0:

@@ -40,6 +40,9 @@ class Block:
         changed = (new != self.hash)
         self.hash = new
         return new, changed
+    def update_from_text(self,text:str):
+        self.runs = markup_to_runs(text)
+        return
 
 @dataclass
 class WordLLMDocument:
