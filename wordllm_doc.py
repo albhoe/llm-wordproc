@@ -24,8 +24,9 @@ class Block:
     id: str
     kind: BlockKind
     level: int = 0  
-    hash:str = "" #A hash of the text in this block. Updates every time the doc is saved.
+    hash:str = "" #A hash of the text in this block. Should be updated every time the doc is saved.
     runs: list[Run] = field(default_factory=list)
+
     @property
     def text(self) -> str:
         """Plain text of the block, ignoring formatting."""
@@ -47,6 +48,7 @@ class WordLLMDocument:
     embedding_model:str = "all-MiniLM-L6-v2"
     blocks: list[Block] = field(default_factory=dict())
     version: int = 1                    # bump when the schema changes
+    index:dict[str,int] = {b.id :i for b,i in enumerate(blocks)}
 
     # ---- helpers -------------------------------------------------------
     def new_block_id(self) -> str:
@@ -60,10 +62,8 @@ class WordLLMDocument:
         return block
     
     def find(self, block_id: str) -> Block | None:
-        for b in self.blocks:
-            if b.id == block_id:
-                return b
-        return None
+        i = self.index.get(block_id,None)
+        return None if i is None else self.blocks[i]
 
     def save(self,path:Path):
         path = Path(path).with_suffix("").with_suffix(".json")
@@ -84,6 +84,7 @@ class WordLLMDocument:
 
     def update_from_text(self,text:str):
         self.blocks = text_to_blocks(text,self)
+        self.index = {b.id :i for b,i in enumerate(self.blocks)}
 
 
 # ---- JSON serialization -------------------------------------------------
