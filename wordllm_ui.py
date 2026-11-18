@@ -32,7 +32,7 @@ class NotepadApp(App):
         Binding("ctrl+i", "toggle_italic", "Italic"),
         Binding("ctrl+q", "quit", "Quit"),
         Binding("ctrl+comma", "prev", "Previous"),
-        Binding("ctrl+period", "next", "Next"),
+        Binding("ctrl+full_stop", "next", "Next"),
     ]
 
     def __init__(self, path: str, verbose: bool = False, fresh = False) -> None:
@@ -72,6 +72,16 @@ class NotepadApp(App):
         synced_blocks = self.ai.save_doc_and_retriever(text)
         self.notify(f"Saved. {synced_blocks} synchronized with retriever.")
 
+    def action_prev(self) -> None:
+        if (i:=self.ai.fsiterator_prev()) is not None:
+            self.jump_to(torow=i)
+            self.notify(f"Result {self.ai.fsiterator.progress()}")
+
+    def action_next(self) -> None:
+        if (i:=self.ai.fsiterator_next()) is not None:
+            self.jump_to(torow=i)
+            self.notify(f"Result {self.ai.fsiterator.progress()}")
+
     def jump_to(self, torow:int, tocol:Optional[int]=None, fromrow:Optional[int]=None, fromcol:Optional[int]=None,):
             editor = self.query_one('#editor',TextArea)
             if fromcol and fromcol:
@@ -99,9 +109,7 @@ class NotepadApp(App):
         else:
             self.query_one('#answer').update("AI response will appear here.")
 
-        if row:=self.ai.fsiterator_next():
-            self.jump_to(torow=row)
-            self.notify(f"Highlighting row {row}")
+        self.action_next()
 
     @on(Input.Submitted, "#question")
     def ask_question(self, event: Input.Submitted) -> None:

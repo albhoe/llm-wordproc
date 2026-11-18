@@ -159,14 +159,16 @@ class WordProcessorAssistant():
         if self.fsiterator:
             id = self.fsiterator.next()
             return list(self.doc.blocks.keys()).index(id)
-        else: return None
+        else: 
+            return None
 
     def fsiterator_prev(self) -> Optional[int]:
         """Outputs the line number of the previous block_id in the iterator"""
         if self.fsiterator:
             id = self.fsiterator.prev()
             return list(self.doc.blocks.keys()).index(id)
-        else: return None
+        else: 
+            return None
     
     def answer_question(self, question:str, highlight:Optional[str] = None) -> str:
         counters["search"] = 0  # Reset search counter for each question
