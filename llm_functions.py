@@ -192,6 +192,7 @@ class WordProcessorAssistant():
         (r1,c1),(r2,c2) = selected_location
         blocks = self.doc.blocks
         assert (0<=r1<=r2<len(blocks)), "Assert the selection is valid for the document."
+        WINDOW = 64
         startbuffer=blocks[r1].text[:c1]
         endbuffer=blocks[r2].text[c2:]
 
@@ -209,7 +210,9 @@ class WordProcessorAssistant():
                     if ri==r2:
                         tempendbuffer = endbuffer
                     block.update_from_text(tempstartbuffer+text_parameter+tempendbuffer)
-                    return f"Block {block_id} now says: \"{block.text}\" Verify that it is coherent and grammatically consistent. If it is not coherent, modify (text_parameter) so that \"{tempstartbuffer}(text_parameter){tempendbuffer}\" forms a coherent thought and try again."
+                    tempstartbuffer = tempstartbuffer[-min(WINDOW,len(tempstartbuffer)):]
+                    tempendbuffer = tempendbuffer[:min(WINDOW,len(tempendbuffer))]
+                    return f"The neighboring text is now: \"{tempstartbuffer}{text_parameter}{tempendbuffer}\" Verify that this has the correct spacing and punctuation to avoid accidentally merging words with the input text, but incomplete words at the beginning and end of the fragment are safe. If it is not correct, try again with different spacing and punctuation around text_parameter."
                 else:
                     return "Edit budget reached. Allow the user to intervene manually."
             except Exception as e:
@@ -221,7 +224,15 @@ class WordProcessorAssistant():
 
         result = agent.invoke({"messages":[{"role":"user","content":prompt}]})
         if self.verbose > 0:
-            return("\n\n".join(str(m.type)+":\n"+str(m.content[:self.verbose]) for m in result["messages"]))
+            res = []
+            for msg in result["messages"]:
+                if msg.type == "ai" and msg.tool_calls:
+                    for call in msg.tool_calls:
+                        res.append(f"\n\n{str(call["name"])}{str(call["args"])})")
+                else:
+                    res.append(f"\n\n{str(msg.type)}:{msg.content[:self.verbose]}")
+            return "".join(res)
+            #return("\n\n".join(str(m.type)+":\n"+str(m.content[:self.verbose]) for m in result["messages"]))
         if isinstance(content:=result["messages"][-1].content,str):
             return content
         else: 
