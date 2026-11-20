@@ -7,6 +7,7 @@ from textual.widgets.text_area import Selection
 from typing import Optional
 import argparse
 from pathlib import Path
+import traceback
 
 from llm_functions import WordProcessorAssistant
 
@@ -37,9 +38,10 @@ class NotepadApp(App):
 
     def __init__(self, path: str, verbose: bool = False, fresh = False) -> None:
         super().__init__()
-        self.path = path
+        self.path = Path(path).with_suffix("").with_suffix(".json")
+        print(self.path)
         self.verbose = verbose
-        self.ai = WordProcessorAssistant(document_path=path+".json", verbose=verbose, fresh = fresh)
+        self.ai = WordProcessorAssistant(document_path=self.path, verbose=verbose, fresh = fresh)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -101,7 +103,6 @@ class NotepadApp(App):
     def update_all(self, ai_response: str | None = None) -> None:
         self.title = self.ai.doc.title
         self.query_one("#manifest").update(f"Manifest: {self.ai.doc.manifest}")
-        # Hold onto this. At some point the document will be able to edit itself, so the UI should jump the cursor to that part.
         editor = self.query_one('#editor',TextArea) 
         editor.history.checkpoint()
         editor.replace(start=(0,0),end=editor.document.end, insert=self.ai.doc.get_text())
@@ -127,7 +128,10 @@ class NotepadApp(App):
         try:
             answer = self.ai.answer_question(question, selected=selected, selected_location=((r1,c1),(r2,c2)))
         except Exception as e:
-            answer = f"Sorry, there was an exception with your request: {e}"
+            if self.verbose > 0:
+                answer =  traceback.print_exc()
+            else:
+                answer = f"Sorry, there was an exception with your request:{type(e).__name__}: {e!r}"
         self.update_all(ai_response=answer)
         #Reset cursor to their initial position.
         editor.move_cursor(location=(r1,c1),center=True)
@@ -146,6 +150,8 @@ if __name__ == "__main__":
         if Path(memory_path).exists() or Path(index_path).exists():
             raise FileExistsError(f"File {path} already exists. Use a different path or manually remove the file.")
         else:
+            if args.verbose > 0:
+                print("Creating a fresh document")
             fresh = True
     else:
         if not (memory_path.exists()):

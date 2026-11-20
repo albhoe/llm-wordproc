@@ -54,19 +54,22 @@ search_tool = StructuredTool.from_function(
 )
 
 class WordProcessorAssistant():
-    def __init__(self, model_name:str = "gemini-3.5-flash-lite", document_path:str = "draft.json", verbose:bool = 0, fresh:bool = False) -> None:
+    def __init__(self, document_path, model_name:str = "gemini-3.5-flash-lite", verbose:bool = 0, fresh:bool = False) -> None:
         self.llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=gemini_key)
         self.doc_path = document_path
         if fresh:
             self.doc = WordLLMDocument(title="New Document", manifest="A general purpose document", blocks=dict())
         else:
-            self.doc = load_document(document_path)
+            try:
+               self.doc = load_document(document_path)
+            except Exception as e:
+                raise FileNotFoundError(f"Error while trying to load document {document_path}, {e}")
         self.retriever = Retriever(self.doc_path,self.doc)
         self.manifest = self.doc.manifest
         self.verbose = verbose
         self.fsiterator:FuzzySearchIterator | None = None
         self.selection: tuple[tuple[int,int],tuple[int,int]] = ((0,0),(0,0))
-        self.save_doc_and_retriever("")
+        self.save_doc_and_retriever(self.doc.get_text())
 
     def save_doc_and_retriever(self,text):
         self.doc.update_from_text(text)
@@ -104,8 +107,8 @@ class WordProcessorAssistant():
                     if index < hi:
                         needed_indices.append(hi)
                     neighbor_blocks = [self.doc.blocks[i] for i in needed_indices]
-                    text = "\n".join([f"Block ID:{b.id}, Block Text:{b.text}" for b in neighbor_blocks])
-                    text = f"Chunk {chunk_num} Content ("+text+f") Chunk Similarity:{float(scores[index])} \n"
+                    text = "\n".join([f"(Block ID:{b.id}, Block Text:\"{b.text}\n\")," for b in neighbor_blocks])
+                    text = f"(Chunk {chunk_num} Content ("+text+f") Chunk Similarity:{float(scores[index])}),"
                     text_len = len(text)
                     if text_len + response_len < MAX_CONTEXT_WINDOW:
                         response += text
@@ -188,26 +191,29 @@ class WordProcessorAssistant():
         
         (r1,c1),(r2,c2) = selected_location
         blocks = self.doc.blocks
-        assert (0<r1<r2<len(blocks))
+        assert (0<=r1<=r2<len(blocks)), "Assert the selection is valid for the document."
         startbuffer=blocks[r1].text[:c1]
         endbuffer=blocks[r2].text[c2:]
 
         def edit_block(block_id:str,text_parameter:str) -> str:
-            counters["edit"] += 1
-            if counters["edit"] < 5:
-                ri = self.doc.index[block_id]
-                block = blocks[self.doc.index[block_id]]
-                if ri < r1 or r2 < ri:
-                    return "This block is outside the user's selected range, and therefore should not be modified. Ask the user to confirm intent."
-                #If the block contains the endpoint of the selected range (ri==r1)|(ri==r2), enforce the constraint based on one or both columns. Otherwise, tool is free to modify everything.
-                if r1==ri:
-                    tempstartbuffer = startbuffer
-                if ri==r2:
-                    tempendbuffer = endbuffer
-                block.update_from_text(tempstartbuffer+text_parameter+tempendbuffer)
-                return f"Block {block_id} now says: \"{block.text}\" Verify that it is coherent and grammatically consistent. If it is not coherent, modify (text_parameter) so that \"{tempstartbuffer}(text_parameter){tempendbuffer}\" forms a coherent thought and try again."
-            else:
-                return "Edit budget reached. Allow the user to intervene manually."
+            try:
+                counters["edit"] += 1
+                if counters["edit"] < 5:
+                    ri = self.doc.index[block_id]
+                    block = blocks[self.doc.index[block_id]]
+                    if ri < r1 or r2 < ri:
+                        return "This block is outside the user's selected range, and therefore should not be modified. Ask the user to confirm intent."
+                    #If the block contains the endpoint of the selected range (ri==r1)|(ri==r2), enforce the constraint based on one or both columns. Otherwise, tool is free to modify everything.
+                    if r1==ri:
+                        tempstartbuffer = startbuffer
+                    if ri==r2:
+                        tempendbuffer = endbuffer
+                    block.update_from_text(tempstartbuffer+text_parameter+tempendbuffer)
+                    return f"Block {block_id} now says: \"{block.text}\" Verify that it is coherent and grammatically consistent. If it is not coherent, modify (text_parameter) so that \"{tempstartbuffer}(text_parameter){tempendbuffer}\" forms a coherent thought and try again."
+                else:
+                    return "Edit budget reached. Allow the user to intervene manually."
+            except Exception as e:
+                return f"Exception during edit: {e}"
         edit_block_tool = StructuredTool.from_function(edit_block,name="edit_block",description="Edits the text field of a particular block. Will be constrained to only replace text selected by the user. Consider whether the edited text will have logical flow and correct grammar with the text preceeding and following it, as the surrounding text will be unchanged.")
 
 
