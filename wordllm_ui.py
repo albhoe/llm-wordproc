@@ -102,7 +102,9 @@ class NotepadApp(App):
         self.title = self.ai.doc.title
         self.query_one("#manifest").update(f"Manifest: {self.ai.doc.manifest}")
         # Hold onto this. At some point the document will be able to edit itself, so the UI should jump the cursor to that part.
-        self.query_one('#editor').text = self.ai.doc.get_text()
+        editor = self.query_one('#editor',TextArea) 
+        editor.history.checkpoint()
+        editor.replace(start=(0,0),end=editor.document.end, insert=self.ai.doc.get_text())
         editor = self.query_one('#editor')
         if ai_response:
             self.query_one('#answer').update(ai_response)

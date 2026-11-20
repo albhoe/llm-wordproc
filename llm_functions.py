@@ -29,7 +29,7 @@ if not env:
 gemini_key = os.getenv("GOOGLE_API_KEY")
 tavily_key = os.getenv("TAVILY_API_KEY")
 
-counters = {"search":0,"retrieve":0}
+counters = {"search":0,"retrieve":0,"edit":0}
 tavily = TavilySearch(api_key=tavily_key)
 
 def chunk_text(text:str, chunk_size:int=4000, chunk_overlap:int=200) -> list[LangchainDocument]:
@@ -185,22 +185,30 @@ class WordProcessorAssistant():
         rename_document_tool = StructuredTool.from_function(self.rename_document,name="rename_document",description="Changes the internal title of the document to match the new_title string. Note that this does not change the file name in memory.")
         retriever_tool = StructuredTool.from_function(self.retrieve,name="retrieve",description="Does a fuzzy semantic search for information pertaining to 'query', returning chunks of text surrounding the semantically similar block up to a length set in the configuration.")
         create_fsiterator_tool = StructuredTool.from_function(self.create_fsiterator, name="create_fsiterator", description="Creates an iterator object that will be visible on the user interface. If a user asks for sections of text, put the appropriate block_ids into this function. Do not put strings other than valid block ids into the list.")
-        def edit_block(block_id:str,text:str) -> str:
-            (r1,c1),(r2,c2) = selected_location
-            ri = self.doc.index[block_id]
-            startbuffer=""
-            endbuffer=""
-            block = self.doc.blocks[self.doc.index[block_id]]
-            if ri < r1 or r2 < ri:
-                return "This block is outside the user's selected range, and therefore should not be modified. Confirm with the user."
-            #If the block contains the endpoint of the selected range (ri==r1)|(ri==r2), enforce the constraint based on one or both columns. Otherwise, tool is free to modify everything.
-            if r1==ri:
-                startbuffer = block.text[:c1]
-            if ri==r2:
-                endbuffer = block.text[c1:]
-            block.update_from_text(startbuffer+text+endbuffer)
-            return f"Successfully wrote {len(text)} characters"
-        edit_block_tool = StructuredTool.from_function(edit_block,name="edit_block",description="Edits the text field of a particular block. Will be constrained to the area of text selected by the user. Consider whether the edited text will have logical flow and correct grammar with the text preceeding and following it, as the surrounding text will be unchanged.")
+        
+        (r1,c1),(r2,c2) = selected_location
+        blocks = self.doc.blocks
+        assert (0<r1<r2<len(blocks))
+        startbuffer=blocks[r1].text[:c1]
+        endbuffer=blocks[r2].text[c2:]
+
+        def edit_block(block_id:str,text_parameter:str) -> str:
+            counters["edit"] += 1
+            if counters["edit"] < 5:
+                ri = self.doc.index[block_id]
+                block = blocks[self.doc.index[block_id]]
+                if ri < r1 or r2 < ri:
+                    return "This block is outside the user's selected range, and therefore should not be modified. Ask the user to confirm intent."
+                #If the block contains the endpoint of the selected range (ri==r1)|(ri==r2), enforce the constraint based on one or both columns. Otherwise, tool is free to modify everything.
+                if r1==ri:
+                    tempstartbuffer = startbuffer
+                if ri==r2:
+                    tempendbuffer = endbuffer
+                block.update_from_text(tempstartbuffer+text_parameter+tempendbuffer)
+                return f"Block {block_id} now says: \"{block.text}\" Verify that it is coherent and grammatically consistent. If it is not coherent, modify (text_parameter) so that \"{tempstartbuffer}(text_parameter){tempendbuffer}\" forms a coherent thought and try again."
+            else:
+                return "Edit budget reached. Allow the user to intervene manually."
+        edit_block_tool = StructuredTool.from_function(edit_block,name="edit_block",description="Edits the text field of a particular block. Will be constrained to only replace text selected by the user. Consider whether the edited text will have logical flow and correct grammar with the text preceeding and following it, as the surrounding text will be unchanged.")
 
 
         agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool,create_fsiterator_tool,edit_block_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Combine information from the retriever_tool and search_tool to do what the user requests, and respond with a string. A user may select a specific section of the document to focus on. If the task is not possible with the document or any tools, respond saying so.")
