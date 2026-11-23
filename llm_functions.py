@@ -29,7 +29,7 @@ if not env:
 gemini_key = os.getenv("GOOGLE_API_KEY")
 tavily_key = os.getenv("TAVILY_API_KEY")
 
-counters = {"search":0,"retrieve":0,"edit":0}
+counters = {"search":5,"retrieve":5,"edit":5}
 tavily = TavilySearch(api_key=tavily_key)
 
 def chunk_text(text:str, chunk_size:int=4000, chunk_overlap:int=200) -> list[LangchainDocument]:
@@ -38,9 +38,9 @@ def chunk_text(text:str, chunk_size:int=4000, chunk_overlap:int=200) -> list[Lan
     return docs
 
 def capped_search(**kwargs) -> str:
-    counters["search"] += 1
-    if counters["search"] > 5:
-        return "Search budget reached. Answer with what you already have."
+    counters["search"] -= 1
+    if counters["search"] < 0:
+        return "Search budget expended. Answer with what you already have."
     try:
         results = tavily.invoke(kwargs)
         return str(results)
@@ -92,7 +92,8 @@ class WordProcessorAssistant():
 
     def retrieve(self, query:str):
         try:
-            if counters['retrieve'] < 2:
+            counters['retrieve']-=1
+            if counters['retrieve'] >= 0:
                 scores = self.retriever.search(query)        
                 top = np.argsort(-scores)
                 response = ""
@@ -117,7 +118,6 @@ class WordProcessorAssistant():
                         break
                     chunk_num += 1
             
-                counters['retrieve']+=1
                 if self.verbose: response = "query:{query}, response:"+response
                 return response
             else:
@@ -126,8 +126,7 @@ class WordProcessorAssistant():
             return f"Error retrieving context: {e}"
 
     def reset_counters(self):
-        for v in counters.keys():
-            counters[v] = 0
+        counters = {"search":5,"retrieve":5,"edit":5}
         if self.verbose>0:
             print(counters)
 
@@ -175,8 +174,6 @@ class WordProcessorAssistant():
             return None
     
     def answer_question(self, question:str, selected:Optional[str] = None, selected_location:tuple[tuple[int,int],tuple[int,int]]=((0,0),(0,0))) -> str:
-        counters["search"] = 0  # Reset search counter for each question
-        counters["retrieve"]=0
         self.reset_counters()
         ((r1,c1),(r2,c2)) = selected_location
         selected_block_ids = [self.doc.blocks[ri].id for ri in range(r1,r2+1)]
@@ -186,20 +183,20 @@ class WordProcessorAssistant():
 
         modify_manifest_tool = StructuredTool.from_function(self.modify_manifest, name="modify_manifest", description="Changes the document manifest to match the new_manifest string. The new_manifest describes a change in the intended tone, style, and 'vibes' of the document, not the factual details or events. Use this tool if and only if the user explictly requests such a change. It does not change the document text, and should not be used as such.")
         rename_document_tool = StructuredTool.from_function(self.rename_document,name="rename_document",description="Changes the internal title of the document to match the new_title string. Note that this does not change the file name in memory.")
-        retriever_tool = StructuredTool.from_function(self.retrieve,name="retrieve",description="Does a fuzzy semantic search for information pertaining to 'query', returning chunks of text surrounding the semantically similar block up to a length set in the configuration.")
+        retriever_tool = StructuredTool.from_function(self.retrieve,name="retrieve",description="Does a fuzzy semantic search for information pertaining to 'query', returning chunks of text surrounding the semantically similar block up to a length set in the configuration. For unknown names and words, consider followup questions to retrieve or tavily_search")
         create_fsiterator_tool = StructuredTool.from_function(self.create_fsiterator, name="create_fsiterator", description="Creates an iterator object that will be visible on the user interface. If a user asks for sections of text, put the appropriate block_ids into this function. Do not put strings other than valid block ids into the list.")
         
         (r1,c1),(r2,c2) = selected_location
         blocks = self.doc.blocks
         assert (0<=r1<=r2<len(blocks)), "Assert the selection is valid for the document."
-        WINDOW = 64
+        WINDOW = 8
         startbuffer=blocks[r1].text[:c1]
         endbuffer=blocks[r2].text[c2:]
 
         def edit_block(block_id:str,text_parameter:str) -> str:
             try:
-                counters["edit"] += 1
-                if counters["edit"] < 5:
+                counters["edit"] -= 1
+                if counters["edit"] >= 0:
                     ri = self.doc.index[block_id]
                     block = blocks[self.doc.index[block_id]]
                     if ri < r1 or r2 < ri:
@@ -212,15 +209,15 @@ class WordProcessorAssistant():
                     block.update_from_text(tempstartbuffer+text_parameter+tempendbuffer)
                     tempstartbuffer = tempstartbuffer[-min(WINDOW,len(tempstartbuffer)):]
                     tempendbuffer = tempendbuffer[:min(WINDOW,len(tempendbuffer))]
-                    return f"The neighboring text is now: \"{tempstartbuffer}{text_parameter}{tempendbuffer}\" Verify that this has the correct spacing and punctuation to avoid accidentally merging words with the input text, but incomplete words at the beginning and end of the fragment are safe. If it is not correct, try again with different spacing and punctuation around text_parameter."
+                    return f"The neighboring text is now: \"{tempstartbuffer}{text_parameter}{tempendbuffer}\" Verify that this has the correct spacing and punctuation to avoid accidentally merging words with the input text, but incomplete words at the beginning and end of the fragment are safe. If it is not correct, try again with different spacing and punctuation around text_parameter. Also try to keep asterisks for markup syntax if there are any in the selected text."
                 else:
-                    return "Edit budget reached. Allow the user to intervene manually."
+                    return "Edit budget expended. Allow the user to intervene manually."
             except Exception as e:
                 return f"Exception during edit: {e}"
-        edit_block_tool = StructuredTool.from_function(edit_block,name="edit_block",description="Edits the text field of a particular block. Will be constrained to only replace text selected by the user. Consider whether the edited text will have logical flow and correct grammar with the text preceeding and following it, as the surrounding text will be unchanged.")
+        edit_block_tool = StructuredTool.from_function(edit_block,name="edit_block",description="Edits the text field of a particular block. Will be constrained to only replace text selected by the user. Try to preserve the spaces, punctuation, and asterisks at the beginning and end of the selected text in the text_parameter so the resulting text fragment reads cleanly.")
 
 
-        agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool,create_fsiterator_tool,edit_block_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Combine information from the retriever_tool and search_tool to do what the user requests, and respond with a string. A user may select a specific section of the document to focus on. If the task is not possible with the document or any tools, respond saying so.")
+        agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool,create_fsiterator_tool,edit_block_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Combine information from retrieve and tavily_search to do what the user requests, and respond with a string. A user may select a specific section of the document to focus on. If the task is not possible with the document or any tools, respond saying so.")
 
         result = agent.invoke({"messages":[{"role":"user","content":prompt}]})
         if self.verbose > 0:
