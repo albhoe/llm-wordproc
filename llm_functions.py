@@ -45,7 +45,7 @@ def capped_search(**kwargs) -> str:
         results = tavily.invoke(kwargs)
         return str(results)
     except Exception as e:
-        return f"Error during search: {str(e)}"
+        return f"Error during search: {e!r}"
 search_tool = StructuredTool.from_function(
     func=capped_search,
     name=tavily.name,
@@ -63,7 +63,7 @@ class WordProcessorAssistant():
             try:
                self.doc = load_document(document_path)
             except Exception as e:
-                raise FileNotFoundError(f"Error while trying to load document {document_path}, {e}")
+                raise FileNotFoundError(f"Error while trying to load document {document_path}, {e!r}")
         self.retriever = Retriever(self.doc_path,self.doc)
         self.manifest = self.doc.manifest
         self.verbose = verbose
@@ -88,7 +88,7 @@ class WordProcessorAssistant():
             #Otherwise, just use the whole text
             return text
         except Exception as e:
-            return f"Error during summarization: {str(e)}"
+            return f"Error during summarization: {e!r}"
 
     def retrieve(self, query:str):
         try:
@@ -123,7 +123,7 @@ class WordProcessorAssistant():
             else:
                 return "Retrieval budget reached. Respond with what you already have."
         except Exception as e:
-            return f"Error retrieving context: {e}"
+            return f"Error retrieving context: {e!r}"
 
     def reset_counters(self):
         counters = {"search":5,"retrieve":5,"edit":5}
@@ -133,12 +133,12 @@ class WordProcessorAssistant():
     def modify_manifest(self, new_manifest:str) -> str:
         self.doc.manifest = new_manifest
         self.doc.save(self.doc_path)
-        return f"Manifest updated to: {new_manifest}"
+        return f"Manifest updated"
 
     def rename_document(self, new_title:str) -> str:
         self.doc.title = new_title
         self.doc.save(self.doc_path)
-        return f"Document title updated to: {new_title}"
+        return f"Document title updated"
 
     def create_fsiterator(self, block_ids:list[str])-> str:
         try:
@@ -146,12 +146,11 @@ class WordProcessorAssistant():
             if len(nonmatch)==0:
                 self.fsiterator = FuzzySearchIterator(block_ids)
                 res = "Iterator created successfully."
-                if self.verbose > 0: res += f" block_ids: {block_ids}"
                 return res
             else:
                 return f"{nonmatch} was not in the document block list. Double check it."
         except Exception as e:
-            return f"Error creating fsiterator {e}"
+            return f"Error creating fsiterator {e!r}"
 
     def destroy_fsiterator(self):
         self.fsiterator = None
@@ -161,7 +160,11 @@ class WordProcessorAssistant():
         """Outputs the line number of the next block_id in the iterator"""
         if self.fsiterator:
             id = self.fsiterator.next()
-            return [b.id for b in self.doc.blocks].index(id)
+            try:
+                return self.doc.index[id]
+            except:
+                self.doc.reindex()
+                return self.doc.index[id]
         else: 
             return None
 
@@ -169,9 +172,11 @@ class WordProcessorAssistant():
         """Outputs the line number of the previous block_id in the iterator"""
         if self.fsiterator:
             id = self.fsiterator.prev()
-            return [b.id for b in self.doc.blocks].index(id)
-        else: 
-            return None
+            try:
+                return self.doc.index[id]
+            except:
+                self.doc.reindex()
+                return self.doc.index[id]
     
     def answer_question(self, question:str, selected:Optional[str] = None, selected_location:tuple[tuple[int,int],tuple[int,int]]=((0,0),(0,0))) -> str:
         self.reset_counters()
@@ -189,9 +194,11 @@ class WordProcessorAssistant():
         (r1,c1),(r2,c2) = selected_location
         blocks = self.doc.blocks
         assert (0<=r1<=r2<len(blocks)), "Assert the selection is valid for the document."
-        WINDOW = 8
+        WINDOW = 16
         startbuffer=blocks[r1].text[:c1]
         endbuffer=blocks[r2].text[c2:]
+        tempstartbuffer=""
+        tempendbuffer=""
 
         def edit_block(block_id:str,text_parameter:str) -> str:
             try:
@@ -213,8 +220,8 @@ class WordProcessorAssistant():
                 else:
                     return "Edit budget expended. Allow the user to intervene manually."
             except Exception as e:
-                return f"Exception during edit: {e}"
-        edit_block_tool = StructuredTool.from_function(edit_block,name="edit_block",description="Edits the text field of a particular block. Will be constrained to only replace text selected by the user. Try to preserve the spaces, punctuation, and asterisks at the beginning and end of the selected text in the text_parameter so the resulting text fragment reads cleanly.")
+                return f"Exception during edit: {e!r}"
+        edit_block_tool = StructuredTool.from_function(edit_block,name="edit_block",description="Edits the text field of a particular block. This can only edit the text which the user has selected to focus on. It cannot edit any text outside the user's selection. Try to preserve the spaces, punctuation, and asterisks at the beginning and end of the selected text in the text_parameter so the resulting text fragment reads cleanly.")
 
 
         agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool,create_fsiterator_tool,edit_block_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Combine information from retrieve and tavily_search to do what the user requests, and respond with a string. A user may select a specific section of the document to focus on. If the task is not possible with the document or any tools, respond saying so.")
