@@ -71,15 +71,16 @@ class Retriever:
             new_encodings = get_model().encode([b.text for b in changed_blocks], normalize_embeddings=True)
             if self.matrix is None:
                 self.matrix=new_encodings
-                return 1000+len(changed_positions)
+                return len(changed_positions)
             
             # Rebuild the matrix in document order.
             new_position_2_vecs = dict(zip(changed_positions,new_encodings))
             num_rows = len(blocks)
             updated_rows = [(new_position_2_vecs[i] if i in changed_positions else self.matrix[i]) for i in range(num_rows)]
-            self.matrix = np.stack(updated_rows)
+            self.matrix  = np.asarray(updated_rows, dtype=np.float32)   # guarantees a numeric dtype
+            assert self.matrix.ndim == 2 and self.matrix.dtype == np.float32, "Confirm that matrix is a 2-d float matrix"
             assert(not (self.matrix is None))
-        return -len(changed_positions)
+        return len(changed_positions)
     # ---- searching ------------------------------------------------------
 
     def search(self, query: str) -> np.ndarray:

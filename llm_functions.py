@@ -53,6 +53,16 @@ search_tool = StructuredTool.from_function(
     args_schema=tavily.args_schema,
 )
 
+def content_text(msg) -> str:
+    c = msg.content
+    if isinstance(c, str):
+        return c
+    # list of content blocks, e.g. [{"type": "text", "text": "..."}]
+    return "".join(
+        b["text"] for b in c
+        if isinstance(b, dict) and b.get("type") == "text"
+    )
+
 class WordProcessorAssistant():
     def __init__(self, document_path, model_name:str = "gemini-3.5-flash-lite", verbose:bool = 0, fresh:bool = False) -> None:
         self.llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=gemini_key)
@@ -90,6 +100,12 @@ class WordProcessorAssistant():
         except Exception as e:
             return f"Error during summarization: {e!r}"
 
+    def reset_counters(self):
+        global counters 
+        counters = {"search":5,"retrieve":5,"edit":5}
+        if self.verbose:
+            print(counters)
+
     def retrieve(self, query:str):
         try:
             counters['retrieve']-=1
@@ -109,7 +125,7 @@ class WordProcessorAssistant():
                         needed_indices.append(hi)
                     neighbor_blocks = [self.doc.blocks[i] for i in needed_indices]
                     text = "\n".join([f"(Block ID:{b.id}, Block Text:\"{b.text}\n\")," for b in neighbor_blocks])
-                    text = f"(Chunk {chunk_num} Content ("+text+f") Chunk Similarity:{float(scores[index])}),"
+                    text = f"Chunk {chunk_num} similarity {float(scores[index])}: ["+text+f"],"
                     text_len = len(text)
                     if text_len + response_len < MAX_CONTEXT_WINDOW:
                         response += text
@@ -125,10 +141,7 @@ class WordProcessorAssistant():
         except Exception as e:
             return f"Error retrieving context: {e!r}"
 
-    def reset_counters(self):
-        counters = {"search":5,"retrieve":5,"edit":5}
-        if self.verbose>0:
-            print(counters)
+
 
     def modify_manifest(self, new_manifest:str) -> str:
         self.doc.manifest = new_manifest
@@ -181,8 +194,10 @@ class WordProcessorAssistant():
     def answer_question(self, question:str, selected:Optional[str] = None, selected_location:tuple[tuple[int,int],tuple[int,int]]=((0,0),(0,0))) -> str:
         self.reset_counters()
         ((r1,c1),(r2,c2)) = selected_location
+        r1 = r1//2
+        r2 = r2//2
         selected_block_ids = [self.doc.blocks[ri].id for ri in range(r1,r2+1)]
-        prompt = f"Document manifest: {self.manifest}\n Question: {question}"
+        prompt = f"Document title: {self.doc.title} Document manifest: {self.manifest}\n Question: {question}"
         if selected:
             prompt += f"\nFocus on this selected text: \"{selected}\" in blocks [{selected_block_ids}]."
 
@@ -191,7 +206,6 @@ class WordProcessorAssistant():
         retriever_tool = StructuredTool.from_function(self.retrieve,name="retrieve",description="Does a fuzzy semantic search for information pertaining to 'query', returning chunks of text surrounding the semantically similar block up to a length set in the configuration. For unknown names and words, consider followup questions to retrieve or tavily_search")
         create_fsiterator_tool = StructuredTool.from_function(self.create_fsiterator, name="create_fsiterator", description="Creates an iterator object that will be visible on the user interface. If a user asks for sections of text, put the appropriate block_ids into this function. Do not put strings other than valid block ids into the list.")
         
-        (r1,c1),(r2,c2) = selected_location
         blocks = self.doc.blocks
         assert (0<=r1<=r2<len(blocks)), "Assert the selection is valid for the document."
         WINDOW = 16
@@ -216,29 +230,26 @@ class WordProcessorAssistant():
                     block.update_from_text(tempstartbuffer+text_parameter+tempendbuffer)
                     tempstartbuffer = tempstartbuffer[-min(WINDOW,len(tempstartbuffer)):]
                     tempendbuffer = tempendbuffer[:min(WINDOW,len(tempendbuffer))]
-                    return f"The neighboring text is now: \"{tempstartbuffer}{text_parameter}{tempendbuffer}\" Verify that this has the correct spacing and punctuation to avoid accidentally merging words with the input text, but incomplete words at the beginning and end of the fragment are safe. If it is not correct, try again with different spacing and punctuation around text_parameter. Also try to keep asterisks for markup syntax if there are any in the selected text."
+                    return f"The neighboring text is now: \"{tempstartbuffer}{text_parameter}{tempendbuffer}\" Verify that this has the correct spacing and punctuation before and after each word, but incomplete words at the beginning and end of the fragment are safe. If it is not correct, try again with different spacing and punctuation around text_parameter. Also try to keep asterisks for markup syntax if there were any in the original selected text."
                 else:
                     return "Edit budget expended. Allow the user to intervene manually."
             except Exception as e:
                 return f"Exception during edit: {e!r}"
-        edit_block_tool = StructuredTool.from_function(edit_block,name="edit_block",description="Edits the text field of a particular block. This can only edit the text which the user has selected to focus on. It cannot edit any text outside the user's selection. Try to preserve the spaces, punctuation, and asterisks at the beginning and end of the selected text in the text_parameter so the resulting text fragment reads cleanly.")
+        edit_block_tool = StructuredTool.from_function(edit_block,name="edit_block",description="Edits the text field of a particular block. This can only edit the text which the user has selected to focus on. It cannot edit any text outside the user's selection. Try to preserve the spaces, punctuation, and asterisks at the beginning and end of the original selected text when creating text_parameter, so the resulting text fragment reads cleanly.")
 
 
         agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool,create_fsiterator_tool,edit_block_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Combine information from retrieve and tavily_search to do what the user requests, and respond with a string. A user may select a specific section of the document to focus on. If the task is not possible with the document or any tools, respond saying so.")
 
         result = agent.invoke({"messages":[{"role":"user","content":prompt}]})
         if self.verbose > 0:
-            res = []
+            parts = [str(counters)]
             for msg in result["messages"]:
                 if msg.type == "ai" and msg.tool_calls:
                     for call in msg.tool_calls:
-                        res.append(f"\n\n{str(call["name"])}{str(call["args"])})")
+                        parts.append(f"**Tool call:** `{call['name']}`\n```json\n{call['args']}\n```")
                 else:
-                    res.append(f"\n\n{str(msg.type)}:{msg.content[:self.verbose]}")
-            return "".join(res)
-            #return("\n\n".join(str(m.type)+":\n"+str(m.content[:self.verbose]) for m in result["messages"]))
-        if isinstance(content:=result["messages"][-1].content,str):
-            return content
-        else: 
-            parts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
-            return "".join(parts)
+                    text = content_text(msg)[: self.verbose]
+                    parts.append(f"**{msg.type}:**\n{text}")
+            return "\n---\n".join(parts)
+
+        return content_text(result["messages"][-1])

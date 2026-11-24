@@ -72,7 +72,7 @@ class NotepadApp(App):
     def action_save(self) -> None:
         text = self.query_one(TextArea).text
         synced_blocks = self.ai.save_doc_and_retriever(text)
-        self.notify(f"Saved. {synced_blocks} synchronized with retriever.")
+        self.notify(f"Saved. {synced_blocks} blocks synchronized with retriever.")
 
     def action_prev(self) -> None:
         if (i:=self.ai.fsiterator_prev()) is not None:
@@ -116,6 +116,7 @@ class NotepadApp(App):
 
     @on(Input.Submitted, "#question")
     def ask_question(self, event: Input.Submitted) -> None:
+        self.action_save()
         self.notify("Thinking...")
         question = event.value.strip()
         if not question:
@@ -129,9 +130,10 @@ class NotepadApp(App):
             answer = self.ai.answer_question(question, selected=selected, selected_location=((r1,c1),(r2,c2)))
         except Exception as e:
             if self.verbose > 0:
-                answer =  traceback.print_exc()
+                answer =  "".join(traceback.format_exception(e))
             else:
                 answer = f"Sorry, there was an exception with your request:{type(e).__name__}: {e!r}"
+            assert not(answer is None), "There was an exception"
         self.update_all(ai_response=answer)
         #Reset cursor to their initial position.
         editor.move_cursor(location=(r1,c1),center=True)
