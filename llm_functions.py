@@ -194,8 +194,6 @@ class WordProcessorAssistant():
     def answer_question(self, question:str, selected:Optional[str] = None, selected_location:tuple[tuple[int,int],tuple[int,int]]=((0,0),(0,0))) -> str:
         self.reset_counters()
         ((r1,c1),(r2,c2)) = selected_location
-        r1 = r1//2
-        r2 = r2//2
         selected_block_ids = [self.doc.blocks[ri].id for ri in range(r1,r2+1)]
         prompt = f"Document title: {self.doc.title} Document manifest: {self.manifest}\n Question: {question}"
         if selected:

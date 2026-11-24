@@ -85,7 +85,7 @@ class WordLLMDocument:
             if b.kind == "heading":
                 body = "#" * max(b.level, 1) + " " + body
             lines.append(body)
-        return "\n\n".join(lines)
+        return "\n".join(lines)
 
     def update_from_text(self,text:str):
         self.blocks = text_to_blocks(text,self)
@@ -186,7 +186,7 @@ def text_to_blocks(text: str, old_doc: WordLLMDocument) -> dict[str,Block]:
     old_blocks = old_doc.blocks
     old_ids = [b.id for b in old_blocks]
     blocks = []
-    for i, line in enumerate(text.split("\n\n")):
+    for i, line in enumerate(text.split("\n")):
         kind, level = "paragraph", 0
         if line.startswith("#"):
             hashes = len(line) - len(line.lstrip("#"))
