@@ -233,8 +233,7 @@ class WordProcessorAssistant():
                     return "Edit budget expended. Allow the user to intervene manually."
             except Exception as e:
                 return f"Exception during edit: {e!r}"
-        edit_block_tool = StructuredTool.from_function(edit_block,name="edit_block",description="Edits the text field of a particular block. This can only edit the text which the user has selected to focus on. It cannot edit any text outside the user's selection. Try to preserve the spaces, punctuation, and asterisks at the beginning and end of the original selected text when creating text_parameter, so the resulting text fragment reads cleanly.")
-
+        edit_block_tool = StructuredTool.from_function(edit_block,name="edit_block",description="Replaces the user selection with text_parameter, so that the block's text becomes \"block.text[:selection_start]+text_parameter+block.text[selection_end:]\". This can only edit the text which the user has selected to focus on, and it will automatically preserve block text outside the user's selection. Create text_parameter so that it can be substituted for the user's selection, preserving the spaces, punctuation, and asterisks at the beginning and end of the original selected text so the resulting text fragment reads cleanly. If it does not read cleanly, modify the text_parameter and try again.")
 
         agent = create_agent(self.llm, tools=[search_tool,modify_manifest_tool,rename_document_tool,retriever_tool,create_fsiterator_tool,edit_block_tool], system_prompt="You are a secretary that can read, interact with, and answer questions about a specific document. Combine information from retrieve and tavily_search to do what the user requests, and respond with a string. A user may select a specific section of the document to focus on. If the task is not possible with the document or any tools, respond saying so.")
 
